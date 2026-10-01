@@ -3,7 +3,7 @@
 
 Gruppe: Two and a Half Men (Felix Teufel, Dennis Nikitin)
 
-<img src="team_two_and_a_half_men.png" width="30%">
+<img src="img/team_two_and_a_half_men.png" width="30%">
 
 ## 💡 1. Kontext & Problemstellung
 
@@ -15,8 +15,6 @@ Ein Betreiber setzt zahlreiche mobile, batteriebetriebene Geräte ein (z. B. mob
 
 Unser System **TN-Watch** realisiert hierfür eine webbasierte Fernüberwachungs- und Koordinierungslösung.
 
----
-
 ### Systemkontext & Schnittstellenabgrenzung
 Zur Erfassung der Messwerte dient eine nachrüstbare Telemetriebox (TrafficNode) an jedem Gerät. Diese misst kontinuierlich:
 - Batteriespannung ($U$ in Volt)
@@ -27,8 +25,6 @@ Die TrafficNode übermittelt diese Messdaten per Funk an einen zentralen MQTT-Br
 - **Startpunkt des Softwareprojekts:** Die Entwicklungsaufgabe beginnt an der Schnittstelle des **MQTT-Brokers**.
 - **Out-of-Scope:** Hardware-Entwicklung, Sensorschaltungen und Firmware der TrafficNode sind **nicht** Bestandteil des Projekts. Für Test- und Demonstrationszwecke wird ein Software-Simulator eingesetzt.
 
----
-
 ### Stakeholder
 
 | Stakeholder | Beschreibung | Ziel / Interesse |
@@ -37,8 +33,6 @@ Die TrafficNode übermittelt diese Messdaten per Funk an einen zentralen MQTT-Br
 | **Servicetechniker (Außendienst)** | Tauscht und wartet Batterien vor Ort im Einsatzgebiet | Exakte GPS-Standortdaten, verlässliche Statusanzeigen, Vermeidung unnötiger Tauschvorgänge, Routenplaner |
 | **Entwicklungsteam (Wir)** | Verantwortlich für Spezifikation, Architektur, Umsetzung und QS | Realisierung eines wartbaren, modularen und testbaren Softwaresystems nach SE-Standards |
 | **Auftraggeber (Dozent)** | Fachliche Begleitung und Bewertung der Projektleistung | Einhaltung von Software-Engineering-Methoden, Anforderungs- und Codequalität, lückenlose Dokumentation |
-
----
 
 ### Personas & Nutzungsszenarien
 
@@ -76,7 +70,7 @@ In diesem Projekt entsteht zunächst ein **Minimal Viable Product (MVP)**, das d
 - Routenplanung via Google Maps
 - Vorhersagemodell (Predictive Maintenance) für die verbleibende Batterielaufzeit auf Basis von historischer Daten.
 
-### 🚫 Explizit Out-of-Scope
+### 🚫 Out-of-Scope
 - Entwicklung von Hardware, Platinenlayouts oder Sensorschaltungen der TrafficNode.
 - Entwicklung von Firmware oder C-Treibern für Mikrocontroller.
 - Bidirektionale Steuerung der Feldgeräte (z. B. Remote-Abschaltung mobiler Ampeln).
@@ -110,8 +104,6 @@ In diesem Projekt entsteht zunächst ein **Minimal Viable Product (MVP)**, das d
 | **Datenhaltezeitraum (Retention)** | 90 Tage hochauflösend | 12 Monate aggregiert | Ermöglicht Langzeituntersuchung von Entladekurven zur Wechselzeitpunkt-Analyse |
 | **Gleichzeitige Benutzer (UI)** | 2 – 5 Personen | bis zu 25 Personen | Interne Nutzung durch Disponenten und Betriebsleitung |
 
----
-
 ## ⚙️ 5. Funktionale Anforderungen
 
 Die Anforderungen sind nach MoSCoW priorisiert (*Must-Have*, *Should-Have*, *Could-Have*) und besitzen ein eindeutig beobachtbares und überprüfbares Akzeptanzkriterium.
@@ -127,8 +119,6 @@ Die Anforderungen sind nach MoSCoW priorisiert (*Must-Have*, *Should-Have*, *Cou
 | **F07** | **Routenplanung via Google Maps** | Automatische Routenplanung durch anklicken der kritischen Nodes und weiterleitung an Google Maps | Servicetechniker | 🟠 Should-Have |
 | **F08** | **CSV-Datenexport** | Export historischer Messreihen eines Geräts zur weiteren wissenschaftlichen oder statistischen Auswertung. | Aufgabenstellung | 🟡 Could-Have |
 | **F09** | **Benachrichtigung** | Auslösen einer Benachrichtigung beim Eintritt des Status „Kritisch“. | Servicetechniker / Disponent | 🟡 Could-Have |
-
----
 
 ## 🧱 6. Nicht-funktionale Anforderungen
 
@@ -174,35 +164,22 @@ Zur Vermeidung von Missverständnissen zwischen Stakeholdern, Entwicklern und Pr
 | **Predictive Maintenance** | Predictive Maintenance | Vorausschauende Wartung basierend auf historischen Trenddaten und Ausfallprognosen. | Zielperspektive für Post-MVP-Phasen. |
 | **Hysterese** | Hysteresis | Verzögertes Umschalten zwischen Zuständen bzw. Schwellenwert-Pufferung zur Vermeidung von Signalsprüngen bei Grenzwerten. | Technische Maßnahme gegen Fehlalarme. |
 
----
-
 ## 🏛️ 9. Architektur- & Technologievorschau
 
 Das Softwaresystem folgt einer entkoppelten, 4-schichtigen Service-Architektur:
 
 1. **Datenerzeugung:**
-   - Echte TrafficNodes im Feld oder der integrierte **Telemetrie-Simulator** publizieren Messpakete im JSON-Format auf Topics des Schemas `trafficnode/{node_id}/telemetry`.
+   - Echte TrafficNodes publizieren Messpakete im JSON-Format.
 2. **Ingestion & Business-Logik (Backend):**
    - **MQTT Ingestion Worker:** Nimmt Datenströme asynchron entgegen, parst und validiert die Nutzlast.
    - **Rules Engine:** Führt die Glättung durch, prüft Schwellenwerte und ermittelt den aktuellen Status (Normal, Warnung, Kritisch, Offline).
    - **REST API:** Stellt strukturierte Endpunkte für Dashboard, Historienabfragen, Filter und Kartendaten bereit.
 3. **Datenhaltung:**
-   - Relationale Datenbank (SQLite für lokale Entwicklung, PostgreSQL für den Regelbetrieb) zur persistenten Speicherung von Gerätestammdaten, Messreihen und Event-Logs.
+   - Relationale Datenbank zur persistenten Speicherung von Gerätestammdaten, Messreihen und Event-Logs.
 4. **Präsentationsschicht (Web-Frontend):**
-   - Moderne, responsive Single-Page-Anwendung (z. B. React / TypeScript mit Tailwind CSS) mit dynamischer Flottentabelle, Diagrammen (Chart.js) und OpenStreetMap/Leaflet-Kartenintegration.
+   - Moderne, responsive Single-Page-Anwendung mit dynamischer Flottentabelle, Diagrammen und Kartenintegration.
 
----
-
-## 👥 10. Team & Rollenverteilung
-
-| Rolle | Teammitglied | Verantwortungsbereiche |
-|---|---|---|
-| **Product Owner & System Analyst** | Felix Teufel | Fachliche Spezifikation, Requirements Engineering, Abstimmung mit Stakeholdern, Definition von Abnahmekriterien, Backlog-Pflege |
-| **Lead Developer & Software Architect** | Dennis Nikitin | Systemarchitektur, Ingestion-Pipeline, Schnittstellendesign, Datenbankmodellierung, CI/CD-Pipeline, Test-Automatisierung |
-
----
-
-## 🧰 11. Tools & Technologien
+## 🧰 10. Tools & Technologien
 
 - **Protokoll & Broker:** MQTT 
 - **Backend & Ingestion:** tbd
