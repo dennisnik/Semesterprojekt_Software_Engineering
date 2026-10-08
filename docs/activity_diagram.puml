@@ -1,0 +1,122 @@
+@startuml activity_diagram
+
+' ============================================================
+' TN-Watch – Aktivitätsdiagramm
+' Hauptprozess: Telemetriedatenverarbeitung & Statusbewertung
+' Quelle: README.md (Architektur Kap. 9, Statusregeln Kap. 7,
+'         Anforderungen F01–F05)
+' ============================================================
+
+title TN-Watch – Aktivitätsdiagramm\nTelemetriedatenverarbeitung & Statusanzeige
+
+start
+
+' ── Datenerzeugung & Empfang ─────────────────────────────────
+
+partition "TrafficNode (extern)" {
+  :TrafficNode misst
+  Spannung (U), Strom (I)
+  und GPS-Koordinaten;
+  :Messdaten als JSON
+  an MQTT-Broker senden;
+}
+
+|MQTT-Broker|
+
+:Nachricht vom Broker\nempfangen (F01);
+
+' ── Ingestion-Service ────────────────────────────────────────
+
+|Ingestion-Service|
+
+:JSON-Nachricht parsen;
+
+if (Syntaktisch valide?) then (ja)
+  :Felder extrahieren:\nnode_id, timestamp,\nvoltage, current, lat, lon;
+
+  if (Pflichtfelder vollständig\n& Wertebereiche plausibel?) then (ja)
+    :Validierte Messdaten\nweiterleiten;
+  else (nein)
+    :Fehlermeldung loggen;
+    stop
+  endif
+else (nein)
+  :Fehlermeldung loggen\n(ungültiges JSON);
+  stop
+endif
+
+' ── Persistenz ───────────────────────────────────────────────
+
+|Datenbank|
+
+:Messdaten transaktionssicher\nin Zeitreihen-Tabelle\nspeichern (ACID);
+
+:Letzten Kontaktzeitpunkt\ndes Geräts aktualisieren;
+
+' ── Statusbewertung (Rules Engine) ───────────────────────────
+
+|Rules Engine|
+
+:Gleitenden Mittelwert\nder letzten 3 Messungen\nberechnen (Hysterese);
+
+note right
+  Vermeidet "Flattern" des
+  Status bei Lastspitzen
+  (z. B. Sendeimpulse)
+end note
+
+:Zeitdifferenz seit letztem\nKontakt berechnen;
+
+if (Letzter Kontakt ≥ 30 min?) then (ja)
+  #LightGray:Status = **Offline** ⚪;
+else (nein)
+  if (U_avg ≥ 12,4 V?) then (ja)
+    #LightGreen:Status = **Normal** 🟢;
+  elseif (U_avg ≥ 11,8 V?) then (ja)
+    #Yellow:Status = **Warnung** 🟡;
+  else (nein)
+    #Salmon:Status = **Kritisch** 🔴;
+
+    ' ── Optionale Benachrichtigung (F09) ──
+    if (Benachrichtigung\naktiviert?) then (ja)
+      :Benachrichtigung\nauslösen (F09);
+    else (nein)
+    endif
+  endif
+endif
+
+:Gerätestatus in\nDatenbank speichern;
+
+if (Statuswechsel\nerkannt?) then (ja)
+  :Ereignis in\nAlarmhistorie\nprotokollieren (F06);
+else (nein)
+endif
+
+' ── REST API & Frontend ──────────────────────────────────────
+
+|REST API|
+
+:Aktuelle Daten über\nREST-Endpunkte bereitstellen;
+
+|Web-Frontend|
+
+fork
+  :Flotten-Dashboard\naktualisieren (F03);
+  note right
+    Tabellarische Übersicht
+    aller Geräte mit Status,
+    Spannung, Strom, Standort
+  end note
+fork again
+  :Kartenansicht\naktualisieren (F04);
+  note right
+    Farbige Pins je Status:
+    🟢 🟡 🔴 ⚪
+  end note
+fork again
+  :Geräte-Detailansicht\n& Liniendiagramme\nbereitstellen (F05);
+end fork
+
+stop
+
+@enduml

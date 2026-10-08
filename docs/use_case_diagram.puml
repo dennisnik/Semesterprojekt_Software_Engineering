@@ -1,0 +1,84 @@
+@startuml use_case_diagram
+
+' ============================================================
+' TN-Watch – Use-Case-Diagramm
+' Quelle: README.md (Funktionale Anforderungen F01–F09,
+'         Stakeholder, Personas)
+' ============================================================
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+title TN-Watch – Use-Case-Diagramm
+
+' ── Akteure ──────────────────────────────────────────────────
+actor "Betriebsleiter\n(Markus)" as BL
+actor "Servicetechniker\n(Kevin / Anja)" as ST
+actor "TrafficNode\n(Hardware)" as TN  <<system>>
+actor "MQTT-Broker" as MQTT            <<system>>
+
+' ── Systemgrenze ─────────────────────────────────────────────
+rectangle "TN-Watch System" {
+
+  ' Must-Have (F01–F05)
+  usecase "MQTT-Telemetrie\nempfangen & validieren\n(F01)" as UC_F01
+  usecase "Automatische\nStatusbewertung\n(F02)" as UC_F02
+  usecase "Flotten-Dashboard\nanzeigen\n(F03)" as UC_F03
+  usecase "Kartenvisualisierung\nanzeigen\n(F04)" as UC_F04
+  usecase "Gerätedetails &\nHistorie einsehen\n(F05)" as UC_F05
+
+  ' Should-Have (F06–F07)
+  usecase "Ereignis- &\nAlarmhistorie\neinsehen\n(F06)" as UC_F06
+  usecase "Routenplanung\nvia Google Maps\n(F07)" as UC_F07
+
+  ' Could-Have (F08–F09)
+  usecase "CSV-Datenexport\n(F08)" as UC_F08
+  usecase "Benachrichtigung\nbei kritischem Status\n(F09)" as UC_F09
+
+  ' Authentifizierung
+  usecase "Anmelden /\nBenutzer verwalten" as UC_AUTH
+}
+
+' ── Beziehungen – Externe Systeme ────────────────────────────
+TN --> MQTT : publiziert\nTelemetriedaten
+MQTT --> UC_F01 : liefert\nJSON-Nachrichten
+
+' ── Beziehungen – Betriebsleiter ─────────────────────────────
+BL --> UC_AUTH
+BL --> UC_F03
+BL --> UC_F04
+BL --> UC_F05
+BL --> UC_F06
+BL --> UC_F08
+
+' ── Beziehungen – Servicetechniker ───────────────────────────
+ST --> UC_AUTH
+ST --> UC_F03
+ST --> UC_F04
+ST --> UC_F05
+ST --> UC_F06
+ST --> UC_F07
+
+' ── Include / Extend ─────────────────────────────────────────
+UC_F01 ..> UC_F02  : <<include>>
+UC_F02 ..> UC_F09  : <<extend>>\nwenn Status = Kritisch
+UC_F05 ..> UC_F08  : <<extend>>\noptionaler Export
+
+' ── Notizen ──────────────────────────────────────────────────
+note right of UC_F02
+  Statusregeln:
+  ▪ Normal:   U ≥ 12,4 V & Kontakt < 30 min
+  ▪ Warnung:  11,8 V ≤ U < 12,4 V
+  ▪ Kritisch: U < 11,8 V
+  ▪ Offline:  Kontakt ≥ 30 min
+  Glättung: gleitender Mittelwert (3 Werte)
+end note
+
+note bottom of UC_F07
+  Servicetechniker markiert
+  kritische Nodes und wird
+  an Google Maps weitergeleitet.
+end note
+
+@enduml
