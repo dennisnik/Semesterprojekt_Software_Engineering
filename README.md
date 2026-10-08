@@ -181,9 +181,14 @@ Das Softwaresystem folgt einer entkoppelten, 4-schichtigen Service-Architektur:
 
 ## 🧰 10. Tools & Technologien
 
-- **Protokoll & Broker:** MQTT 
-- **Backend & Ingestion:** tbd
-- **Frontend:** tbd
-- **Datenbank:** tbd
-- **Test- & Simulationswerkzeuge:** tbd
-- **Qualitätssicherung:** GitHub
+Die detaillierten Architekturentscheidungen und deren Begründungen sind in den [Architecture Decision Records (ADR)](docs/adr/ADR.md) dokumentiert:
+
+- **Architektur-Stil:** Modularer Monolith (ASP.NET Core Solution) ([ADR-01](docs/adr/ADR.md#adr-01-architektur-stil-modularer-monolith-vs-microservices))
+- **Protokoll & Broker:** MQTT (Eclipse Mosquitto) & .NET `MQTTnet` Worker ([ADR-04](docs/adr/ADR.md#adr-04-telemetrie-ingestion-protokoll-mqtt-vs-http-post))
+- **Backend & Ingestion:** ASP.NET Core (.NET 8/9), Event-driven Verarbeitung mit In-Memory-Events (MediatR/Channels) ([ADR-01](docs/adr/ADR.md#adr-01-architektur-stil-modularer-monolith-vs-microservices), [ADR-07](docs/adr/ADR.md#adr-07-interne-datenverarbeitung-event-driven-architektur))
+- **Frontend:** ASP.NET Core Blazor (Interactive Server / Razor Components) mit SignalR & Leaflet/Charts ([ADR-02](docs/adr.md#adr-02-client---schnittstellen-kommunikation-rest--signalr-vs-reines-messaging), [ADR-05](docs/adr/ADR.md#adr-05-frontend-architektur-aspnet-core-blazor))
+- **Datenbank & ORM:** PostgreSQL mit Entity Framework Core & Npgsql (Shared DB mit Schematrennung `core`, `telemetry`, `alerting`) ([ADR-03](docs/adr/ADR.md#adr-03-persistenztechnologie-postgresql-vs-mongodb), [ADR-09](docs/adr/ADR.md#adr-09-datenbank-architektur-gemeinsame-vs-getrennte-datenbanken))
+- **Authentifizierung:** OpenID Connect (OIDC) mit RBAC ([ADR-06](docs/adr/ADR.md#adr-06-authentifizierung--autorisierung-openid-connect--oidc))
+- **Betrieb & Deployment:** Containerisiert via Docker & Docker Compose ([ADR-08](docs/adr/ADR.md#adr-08-betriebs---deployment-modell-containerisiert-on-premises--docker-compose))
+- **Test- & Simulationswerkzeuge:** xUnit / Moq, Software-Simulator für TrafficNodes
+- **Qualitätssicherung & CI/CD:** GitHub Actions, SonarQube / .NET Code Analysis

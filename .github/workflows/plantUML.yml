@@ -28,7 +28,7 @@ jobs:
       - name: Generate SVG diagrams
         run: |
           find docs -name "*.puml" -print0 | \
-          xargs -0 java -jar plantuml.jar -tsvg
+          xargs -0 -r java -jar plantuml.jar -tsvg
 
       - name: Commit updated diagrams
         run: |
