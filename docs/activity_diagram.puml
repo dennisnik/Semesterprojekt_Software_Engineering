@@ -21,101 +21,100 @@ partition "TrafficNode (extern)" {
   an MQTT-Broker senden;
 }
 
-|MQTT-Broker|
-
-:Nachricht vom Broker\nempfangen (F01);
+partition "MQTT-Broker" {
+  :Nachricht vom Broker\nempfangen (F01);
+}
 
 ' ── Ingestion-Service ────────────────────────────────────────
 
-|Ingestion-Service|
+partition "Ingestion-Service" {
+  :JSON-Nachricht parsen;
 
-:JSON-Nachricht parsen;
+  if (Syntaktisch valide?) then (ja)
+    :Felder extrahieren:\nnode_id, timestamp,\nvoltage, current, lat, lon;
 
-if (Syntaktisch valide?) then (ja)
-  :Felder extrahieren:\nnode_id, timestamp,\nvoltage, current, lat, lon;
-
-  if (Pflichtfelder vollständig\n& Wertebereiche plausibel?) then (ja)
-    :Validierte Messdaten\nweiterleiten;
+    if (Pflichtfelder vollständig\n& Wertebereiche plausibel?) then (ja)
+      :Validierte Messdaten\nweiterleiten;
+    else (nein)
+      :Fehlermeldung loggen;
+      stop
+    endif
   else (nein)
-    :Fehlermeldung loggen;
+    :Fehlermeldung loggen\n(ungültiges JSON);
     stop
   endif
-else (nein)
-  :Fehlermeldung loggen\n(ungültiges JSON);
-  stop
-endif
+}
 
 ' ── Persistenz ───────────────────────────────────────────────
 
-|Datenbank|
+partition "Datenbank" {
+  :Messdaten transaktionssicher\nin Zeitreihen-Tabelle\nspeichern (ACID);
 
-:Messdaten transaktionssicher\nin Zeitreihen-Tabelle\nspeichern (ACID);
-
-:Letzten Kontaktzeitpunkt\ndes Geräts aktualisieren;
+  :Letzten Kontaktzeitpunkt\ndes Geräts aktualisieren;
+}
 
 ' ── Statusbewertung (Rules Engine) ───────────────────────────
 
-|Rules Engine|
+partition "Rules Engine" {
+  :Gleitenden Mittelwert\nder letzten 3 Messungen\nberechnen (Hysterese);
 
-:Gleitenden Mittelwert\nder letzten 3 Messungen\nberechnen (Hysterese);
+  note right
+    Vermeidet "Flattern" des
+    Status bei Lastspitzen
+    (z. B. Sendeimpulse)
+  end note
 
-note right
-  Vermeidet "Flattern" des
-  Status bei Lastspitzen
-  (z. B. Sendeimpulse)
-end note
+  :Zeitdifferenz seit letztem\nKontakt berechnen;
 
-:Zeitdifferenz seit letztem\nKontakt berechnen;
-
-if (Letzter Kontakt ≥ 30 min?) then (ja)
-  #LightGray:Status = **Offline** ⚪;
-else (nein)
-  if (U_avg ≥ 12,4 V?) then (ja)
-    #LightGreen:Status = **Normal** 🟢;
-  elseif (U_avg ≥ 11,8 V?) then (ja)
-    #Yellow:Status = **Warnung** 🟡;
+  if (Letzter Kontakt >= 30 min?) then (ja)
+    #LightGray:Status = **Offline**;
   else (nein)
-    #Salmon:Status = **Kritisch** 🔴;
-
-    ' ── Optionale Benachrichtigung (F09) ──
-    if (Benachrichtigung\naktiviert?) then (ja)
-      :Benachrichtigung\nauslösen (F09);
+    if (U_avg >= 12,4 V?) then (ja)
+      #LightGreen:Status = **Normal**;
+    elseif (U_avg >= 11,8 V?) then (ja)
+      #Yellow:Status = **Warnung**;
     else (nein)
+      #Salmon:Status = **Kritisch**;
+
+      ' ── Optionale Benachrichtigung (F09) ──
+      if (Benachrichtigung\naktiviert?) then (ja)
+        :Benachrichtigung\nauslösen (F09);
+      else (nein)
+      endif
     endif
   endif
-endif
 
-:Gerätestatus in\nDatenbank speichern;
+  :Geraetestatus in\nDatenbank speichern;
 
-if (Statuswechsel\nerkannt?) then (ja)
-  :Ereignis in\nAlarmhistorie\nprotokollieren (F06);
-else (nein)
-endif
+  if (Statuswechsel\nerkannt?) then (ja)
+    :Ereignis in\nAlarmhistorie\nprotokollieren (F06);
+  else (nein)
+  endif
+}
 
 ' ── REST API & Frontend ──────────────────────────────────────
 
-|REST API|
+partition "REST API" {
+  :Aktuelle Daten ueber\nREST-Endpunkte bereitstellen;
+}
 
-:Aktuelle Daten über\nREST-Endpunkte bereitstellen;
-
-|Web-Frontend|
-
-fork
-  :Flotten-Dashboard\naktualisieren (F03);
-  note right
-    Tabellarische Übersicht
-    aller Geräte mit Status,
-    Spannung, Strom, Standort
-  end note
-fork again
-  :Kartenansicht\naktualisieren (F04);
-  note right
-    Farbige Pins je Status:
-    🟢 🟡 🔴 ⚪
-  end note
-fork again
-  :Geräte-Detailansicht\n& Liniendiagramme\nbereitstellen (F05);
-end fork
+partition "Web-Frontend" {
+  fork
+    :Flotten-Dashboard\naktualisieren (F03);
+    note right
+      Tabellarische Uebersicht
+      aller Geraete mit Status,
+      Spannung, Strom, Standort
+    end note
+  fork again
+    :Kartenansicht\naktualisieren (F04);
+    note right
+      Farbige Pins je Status
+    end note
+  fork again
+    :Geraete-Detailansicht\n& Liniendiagramme\nbereitstellen (F05);
+  end fork
+}
 
 stop
 
