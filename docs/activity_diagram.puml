@@ -1,120 +1,124 @@
 @startuml activity_diagram
 
 ' ============================================================
-' TN-Watch – Aktivitätsdiagramm
-' Hauptprozess: Telemetriedatenverarbeitung & Statusbewertung
-' Quelle: README.md (Architektur Kap. 9, Statusregeln Kap. 7,
-'         Anforderungen F01–F05)
+' TN-Watch - Aktivitaetsdiagramm
+' Hauptprozess: Telemetriedatenverarbeitung und Statusbewertung
+' Quelle: README.md Architektur Kap. 9, Statusregeln Kap. 7,
+'         Anforderungen F01-F05
 ' ============================================================
 
-title TN-Watch – Aktivitätsdiagramm\nTelemetriedatenverarbeitung & Statusanzeige
+title TN-Watch - Aktivitaetsdiagramm\nTelemetriedatenverarbeitung und Statusanzeige
 
 start
 
-' ── Datenerzeugung & Empfang ─────────────────────────────────
+' -- Datenerzeugung und Empfang --
 
-partition "TrafficNode (extern)" {
-  :TrafficNode misst
-  Spannung (U), Strom (I)
-  und GPS-Koordinaten;
-  :Messdaten als JSON
-  an MQTT-Broker senden;
-}
+:TrafficNode misst Spannung (U),
+Strom (I) und GPS-Koordinaten;
+note right: **TrafficNode (extern)**
 
-partition "MQTT-Broker" {
-  :Nachricht vom Broker\nempfangen (F01);
-}
+:Messdaten als JSON
+an MQTT-Broker senden;
 
-' ── Ingestion-Service ────────────────────────────────────────
+' -- MQTT-Broker --
 
-partition "Ingestion-Service" {
-  :JSON-Nachricht parsen;
+:Nachricht vom Broker
+empfangen (F01);
+note right: **MQTT-Broker**
 
-  if (Syntaktisch valide?) then (ja)
-    :Felder extrahieren:\nnode_id, timestamp,\nvoltage, current, lat, lon;
+' -- Ingestion-Service --
 
-    if (Pflichtfelder vollständig\n& Wertebereiche plausibel?) then (ja)
-      :Validierte Messdaten\nweiterleiten;
+:JSON-Nachricht parsen;
+note right: **Ingestion-Service**
+
+if (Syntaktisch valide?) then (ja)
+  :Felder extrahieren:
+  node_id, timestamp,
+  voltage, current, lat, lon;
+
+  if (Pflichtfelder vollstaendig
+  und Wertebereiche plausibel?) then (ja)
+    :Validierte Messdaten
+    weiterleiten;
+  else (nein)
+    :Fehlermeldung loggen;
+    kill
+  endif
+else (nein)
+  :Fehlermeldung loggen
+  (ungueltiges JSON);
+  kill
+endif
+
+' -- Persistenz (Datenbank) --
+
+:Messdaten transaktionssicher
+in Zeitreihen-Tabelle
+speichern (ACID);
+note right: **Datenbank**
+
+:Letzten Kontaktzeitpunkt
+des Geraets aktualisieren;
+
+' -- Statusbewertung (Rules Engine) --
+
+:Gleitenden Mittelwert
+der letzten 3 Messungen
+berechnen (Hysterese);
+note right
+  **Rules Engine**
+  ----
+  Vermeidet Flattern des
+  Status bei Lastspitzen
+end note
+
+:Zeitdifferenz seit letztem
+Kontakt berechnen;
+
+if (Letzter Kontakt >= 30 min?) then (ja)
+  :Status = **Offline**;
+else (nein)
+  if (U_avg >= 12,4 V?) then (ja)
+    :Status = **Normal**;
+  elseif (U_avg >= 11,8 V?) then (ja)
+    :Status = **Warnung**;
+  else (nein)
+    :Status = **Kritisch**;
+    if (Benachrichtigung aktiviert?) then (ja)
+      :Benachrichtigung
+      ausloesen (F09);
     else (nein)
-      :Fehlermeldung loggen;
-      stop
-    endif
-  else (nein)
-    :Fehlermeldung loggen\n(ungültiges JSON);
-    stop
-  endif
-}
-
-' ── Persistenz ───────────────────────────────────────────────
-
-partition "Datenbank" {
-  :Messdaten transaktionssicher\nin Zeitreihen-Tabelle\nspeichern (ACID);
-
-  :Letzten Kontaktzeitpunkt\ndes Geräts aktualisieren;
-}
-
-' ── Statusbewertung (Rules Engine) ───────────────────────────
-
-partition "Rules Engine" {
-  :Gleitenden Mittelwert\nder letzten 3 Messungen\nberechnen (Hysterese);
-
-  note right
-    Vermeidet "Flattern" des
-    Status bei Lastspitzen
-    (z. B. Sendeimpulse)
-  end note
-
-  :Zeitdifferenz seit letztem\nKontakt berechnen;
-
-  if (Letzter Kontakt >= 30 min?) then (ja)
-    #LightGray:Status = **Offline**;
-  else (nein)
-    if (U_avg >= 12,4 V?) then (ja)
-      #LightGreen:Status = **Normal**;
-    elseif (U_avg >= 11,8 V?) then (ja)
-      #Yellow:Status = **Warnung**;
-    else (nein)
-      #Salmon:Status = **Kritisch**;
-
-      ' ── Optionale Benachrichtigung (F09) ──
-      if (Benachrichtigung\naktiviert?) then (ja)
-        :Benachrichtigung\nauslösen (F09);
-      else (nein)
-      endif
     endif
   endif
+endif
 
-  :Geraetestatus in\nDatenbank speichern;
+:Geraetestatus in
+Datenbank speichern;
 
-  if (Statuswechsel\nerkannt?) then (ja)
-    :Ereignis in\nAlarmhistorie\nprotokollieren (F06);
-  else (nein)
-  endif
-}
+if (Statuswechsel erkannt?) then (ja)
+  :Ereignis in Alarmhistorie
+  protokollieren (F06);
+else (nein)
+endif
 
-' ── REST API & Frontend ──────────────────────────────────────
+' -- REST API und Frontend --
 
-partition "REST API" {
-  :Aktuelle Daten ueber\nREST-Endpunkte bereitstellen;
-}
+:Aktuelle Daten ueber
+REST-Endpunkte bereitstellen;
+note right: **REST API**
 
-partition "Web-Frontend" {
-  fork
-    :Flotten-Dashboard\naktualisieren (F03);
-    note right
-      Tabellarische Uebersicht
-      aller Geraete mit Status,
-      Spannung, Strom, Standort
-    end note
-  fork again
-    :Kartenansicht\naktualisieren (F04);
-    note right
-      Farbige Pins je Status
-    end note
-  fork again
-    :Geraete-Detailansicht\n& Liniendiagramme\nbereitstellen (F05);
-  end fork
-}
+fork
+  :Flotten-Dashboard
+  aktualisieren (F03);
+fork again
+  :Kartenansicht
+  aktualisieren (F04);
+fork again
+  :Geraete-Detailansicht und
+  Liniendiagramme bereitstellen (F05);
+end fork
+
+note right: **Web-Frontend**
 
 stop
 
