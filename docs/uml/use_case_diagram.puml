@@ -33,6 +33,7 @@ rectangle "TN-Watch System" {
 
   ' Could-Have (F08-F09)
   usecase "CSV-Datenexport\n(F08)" as UC_F08
+  usecase "Batteriewechsel-\nHistorie einsehen\n(F10)" as UC_F10
   usecase "Benachrichtigung\nbei kritischem Status\n(F09)" as UC_F09
 
   ' Authentifizierung
@@ -42,6 +43,7 @@ rectangle "TN-Watch System" {
 ' -- Beziehungen: Externe Systeme -----------------------------
 TN --> MQTT : publiziert\nTelemetriedaten
 MQTT --> UC_F01 : liefert\nJSON-Nachrichten
+MQTT --> UC_F10 : liefert\nBatterie-Ereignisse
 
 ' -- Beziehungen: Betriebsleiter ------------------------------
 BL --> UC_AUTH
@@ -58,6 +60,8 @@ ST --> UC_F04
 ST --> UC_F05
 ST --> UC_F06
 ST --> UC_F07
+ST --> UC_F10
+BL --> UC_F10
 
 ' -- Include / Extend -----------------------------------------
 UC_F01 ..> UC_F02  : <<include>>
