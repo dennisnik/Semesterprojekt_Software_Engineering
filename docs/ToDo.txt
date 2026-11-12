@@ -1,0 +1,28 @@
+Claude: "Open points for you":
+
+-   Ask the lecturer which topic the battery exchange events use, 
+    and whether your group's own hardware sends under tinf25d-two-and-a-half-men/.... 
+    Both can be added in configuration without code changes.
+-   Re-export the three C4 SVGs in docs/architecture/c4/ from Structurizr. 
+    I updated and validated the .dsl, but couldn't regenerate the images in their original style.
+-   Deploying to the course server needs HTTPS in front of the app (a reverse proxy); 
+    right now it only serves plain HTTP. Ports 21300/21301 are prepared in deploy/.env.example.
+-   .NET 8 support ended on 10 Nov 2026. 
+    Moving to .NET 10 is a one-line change in Directory.Build.props.
+
+My open Questions:
+
+-   How does the simulation work? What is it based on? How should it be used?
+-   The table has a small “gap” above the table header that lets the table below show through
+    -> The outline of the table header disappears as soon as you scroll.
+-   What is the purpose of the “User Management” tab?
+-   Why does each node have a “Battery:” attribute? Especially if it’s empty?
+    Can it be removed, or will a “Battery ID” be added there once real data is entered?
+-   How does the program behave when two employees are working on it at the same time?
+    For example, if one of them accesses certain nodes, does the other employee see that someone else is already handling them?
+
+What else I’d like to see:
+
+-   An explanation of the entire implementation. What was done, how, and why? I want to be able to understand the entire file tree.
+
+Translated with DeepL.com (free version)

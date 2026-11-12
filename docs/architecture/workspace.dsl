@@ -11,22 +11,23 @@ workspace "TN-Watch" "C4-Architekturmodell für das TN-Watch IoT-Flottenüberwac
         // EXTERNE SYSTEME & DATENQUELLE
         // ========================================================
         telemetrySource = softwareSystem "Telemetrie-Datenquelle" "Liefert Telemetriedaten (Spannung, Strom, GPS) per MQTT – transparent als reale Hardware-Box (TrafficNode) oder Software-Simulator." "ExternalSystem"
-        keycloak = softwareSystem "Identity Provider (OIDC)" "Zentraler Authentifizierungs- und Autorisierungsdienst (z. B. Keycloak)." "ExternalSystem"
-        googleMaps = softwareSystem "Google Maps API" "Externer Kartendienst für Routenplanung und Geocoding." "ExternalSystem"
+        googleMaps = softwareSystem "Google Maps" "Externer Kartendienst; Routenplanung per Maps-URL (ohne API-Key)." "ExternalSystem"
+        mqttBroker = softwareSystem "MQTT-Broker (Kurs)" "Extern betriebener Broker mqtt.ti-labs.ai:8883 (TLS), an den die TrafficNodes publizieren." "ExternalSystem,Broker"
+        osm = softwareSystem "OpenStreetMap Tiles" "Kartenkacheln für die Leaflet-Karte." "ExternalSystem"
 
         // ========================================================
         // C4 LEVEL 1 & 2: DAS TN-WATCH SYSTEM & CONTAINER
         // ========================================================
         tnWatch = softwareSystem "TN-Watch System" "Zentrales webbasiertes Überwachungs- und Koordinierungssystem für mobile Verkehrsleitsysteme." {
             
-            // Container 1: MQTT-Broker
-            mqttBroker = container "MQTT Broker" "Nimmt eingehende Telemetriedaten der Datenquelle per MQTT über gesicherte Topics entgegen." "Eclipse Mosquitto" "Broker"
+            // Container 1: Identity Provider (im Compose-Stack betrieben, ADR-06/08)
+            identity = container "Keycloak" "Realm tnwatch: Login (OIDC), Rollen Betriebsleiter/Techniker, Benutzerverwaltung." "Keycloak 26" "IdP"
 
             // Container 2: Datenbank
-            database = container "PostgreSQL Datenbank" "Speichert Gerätestammdaten, Konfigurationen, Zeitreihen-Messdaten und Alarmhistorien (Schemata: core, telemetry, alerting)." "PostgreSQL 16" "Database"
+            database = container "PostgreSQL Datenbank" "Speichert Gerätestammdaten, Batterie-Ereignisse, Zeitreihen-Messdaten und Statuswechsel (Schemata: core, telemetry, alerting) sowie die Keycloak-DB." "PostgreSQL 16" "Database"
 
             // Container 3: Web Application (Modularer Monolith)
-            webApp = container "TN-Watch Webanwendung" "Modularer Monolith: Beinhaltet Web-Dashboard, REST-API, MQTT-Ingestion und regelbasierte Zustandsbewertung." "ASP.NET Core 8 / Blazor Server" "App" {
+            webApp = container "TN-Watch Webanwendung" "Modularer Monolith: Web-Dashboard, REST-API, MQTT-Ingestion, In-Process-Simulator und regelbasierte Zustandsbewertung." "ASP.NET Core 8 / Blazor Server" "App" {
                 
                 // ========================================================
                 // C4 LEVEL 3: KOMPONENTEN INNERHALB DER WEB APPLICATION
@@ -34,9 +35,10 @@ workspace "TN-Watch" "C4-Architekturmodell für das TN-Watch IoT-Flottenüberwac
                 ui = component "Blazor Dashboard & UI" "Razor Components: Flottenübersicht, Detailkurven, Leaflet-Kartenansicht und Benutzerverwaltung." "Blazor Server / Razor"
                 signalrHub = component "SignalR Realtime Hub" "Pusht eintreffende Telemetriedaten und Statusänderungen in Echtzeit per WebSocket an UI-Clients." "ASP.NET Core SignalR"
                 restApi = component "REST API Controller" "Stellt OpenAPI-Endpunkte für Stammdaten, historische Telemetrie und Exporte bereit." "ASP.NET Core Web API"
-                mqttIngestion = component "MQTT Ingestion Worker" "Abonniert MQTT-Topics, parst JSON-Nutzlasten und validiert Sensordaten." "BackgroundService (MQTTnet)"
-                eventBus = component "In-Memory Event Bus" "Entkoppelt Ingestion, Persistierung und Alerting über asynchrone Ereignisse." "MediatR / Channels"
-                statusEngine = component "Status Evaluation Engine" "Bewertet Batteriespannung anhand von Schwellenwerten mit gleitendem 3-Werte-Mittelwert (Hysterese)." "C# Domain Service"
+                mqttIngestion = component "MQTT Ingestion Worker" "Abonniert MQTT-Topics (TLS, QoS 1, Auto-Reconnect) und reicht Rohnachrichten an die Pipeline weiter." "BackgroundService (MQTTnet)"
+                simulator = component "Telemetry Simulator" "Erzeugt simulierte TrafficNodes im Format sample_msg.json (Dashboard-Schalter, nur Betriebsleiter)." "BackgroundService"
+                eventBus = component "Ingestion Pipeline / Event Bus" "Begrenzter Channel + Konsument: parst, validiert und verteilt Telemetrie- und Batterie-Ereignisse." "System.Threading.Channels"
+                statusEngine = component "Status Evaluation Engine" "Bewertet Batteriespannung anhand von Schwellenwerten mit gleitendem 3-Werte-Mittelwert (Hysterese); Offline-Watchdog." "C# Domain Service"
                 persistenceService = component "Persistence & Data Access" "Verwaltet Lese- und Schreibzugriffe auf PostgreSQL via EF Core (DbContext)." "Entity Framework Core"
                 authMiddleware = component "OIDC Auth Middleware" "Validiert Tokens und steuert rollenbasierten Zugriff (RBAC)." "ASP.NET Core Security"
             }
@@ -53,11 +55,15 @@ workspace "TN-Watch" "C4-Architekturmodell für das TN-Watch IoT-Flottenüberwac
         techniker -> webApp "Prüft Batteriestatus, sichtet Standorte & Historie mobil [HTTPS]"
 
         // WebApp <-> Externe Systeme
-        webApp -> keycloak "Authentifiziert Benutzer via OIDC / OAuth 2.0 [HTTPS]"
+        webApp -> identity "Authentifiziert Benutzer via OIDC / OAuth 2.0 [HTTP(S)]"
+        flottenmanager -> identity "Meldet sich an, verwaltet Benutzer [HTTPS]"
+        techniker -> identity "Meldet sich an [HTTPS]"
+        identity -> database "Speichert Realm und Benutzer [JDBC]"
         webApp -> googleMaps "Übergibt Koordinaten zur Routenplanung [HTTPS]"
 
         // WebApp <-> Broker & DB
-        webApp -> mqttBroker "Abonniert 'tn-watch/nodes/+/telemetry' [MQTT / TCP]"
+        webApp -> mqttBroker "Abonniert 'traffic-device/+/trafficnode/+/status' [MQTTS, Port 8883]"
+        webApp -> osm "Lädt Kartenkacheln (im Browser) [HTTPS]"
         webApp -> database "Liest und schreibt Stammdaten, Telemetrie und Alarme [TCP / SQL, Port 5432]"
 
         // ========================================================
@@ -67,13 +73,14 @@ workspace "TN-Watch" "C4-Architekturmodell für das TN-Watch IoT-Flottenüberwac
         techniker -> ui "Interagiert mit [HTTPS]"
         
         ui -> authMiddleware "Verifiziert Rechte via"
-        authMiddleware -> keycloak "Validiert Claims / Tokens [HTTPS]"
+        authMiddleware -> identity "Validiert Claims / Tokens [HTTP(S)]"
 
         ui -> restApi "Fragt Daten ab via"
         ui -> signalrHub "Empfängt Live-Updates via [WebSockets]"
 
         mqttIngestion -> mqttBroker "Liest Telemetrienachrichten aus [MQTTnet]"
-        mqttIngestion -> eventBus "Publiziert TelemetryReceivedEvent"
+        mqttIngestion -> eventBus "Schreibt Rohnachrichten in den Channel"
+        simulator -> eventBus "Schreibt simulierte Rohnachrichten in den Channel"
 
         eventBus -> statusEngine "Leitet Telemetrie weiter an"
         eventBus -> persistenceService "Triggert Persistierung via"
@@ -127,6 +134,10 @@ workspace "TN-Watch" "C4-Architekturmodell für das TN-Watch IoT-Flottenüberwac
             element "Database" {
                 shape Cylinder
                 background #225c99
+                color #ffffff
+            }
+            element "IdP" {
+                background #6c5ce7
                 color #ffffff
             }
             element "Broker" {

@@ -1,0 +1,16 @@
+@* Battery gauge as in the mockups: hatched fill + percentage (estimated SoC). *@
+<div class="battery @Format.Css(Status) @(LabelBelow ? "label-below" : "") @(Large ? "is-large" : "")"
+     role="meter" aria-label="Ladezustand (geschätzt)" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@(Percent ?? 0)">
+    <span class="battery-body"><span class="battery-fill" style="width:@(Percent ?? 0)%"></span></span>
+    <span class="battery-label">@Format.Percent(Percent)</span>
+</div>
+
+@code {
+    [Parameter] public int? Percent { get; set; }
+
+    [Parameter] public NodeStatus Status { get; set; }
+
+    [Parameter] public bool LabelBelow { get; set; }
+
+    [Parameter] public bool Large { get; set; }
+}

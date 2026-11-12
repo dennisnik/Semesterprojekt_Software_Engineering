@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>tnwatch-webui-6b1f3c2e</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TNWatch.Domain\TNWatch.Domain.csproj" />
+    <ProjectReference Include="..\TNWatch.TelemetryIngestion\TNWatch.TelemetryIngestion.csproj" />
+    <ProjectReference Include="..\TNWatch.Persistence\TNWatch.Persistence.csproj" />
+    <ProjectReference Include="..\TNWatch.Alerting\TNWatch.Alerting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="8.0.11" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TNWatch.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

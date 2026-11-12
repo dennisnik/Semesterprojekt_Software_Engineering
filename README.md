@@ -64,10 +64,11 @@ In diesem Projekt entsteht zunächst ein **Minimal Viable Product (MVP)**, das d
   - Detailansicht pro Gerät mit Kenndaten und Liniendiagramm für Spannungs- und Stromverlauf.
   - Interaktive Kartenansicht mit farblich markierten Pins.
   - Benutzer- und Rechteverwaltung
+- **Batteriewechsel-Historie:** Empfang von Batterie-Tausch- und Entsorgungsereignissen per MQTT.
+- **Simulator:** In-Process-Simulator für Demo und Lasttests, im Dashboard schaltbar.
 
 ### 🟡 Geplante Erweiterungen (Post-MVP)
 - Automatischer Benachrichtigungsdienst (E-Mail) bei Eintritt eines kritischen Zustands.
-- Routenplanung via Google Maps
 - Vorhersagemodell (Predictive Maintenance) für die verbleibende Batterielaufzeit auf Basis von historischer Daten.
 
 ### 🚫 Out-of-Scope
@@ -119,6 +120,7 @@ Die Anforderungen sind nach MoSCoW priorisiert (*Must-Have*, *Should-Have*, *Cou
 | **F07** | **Routenplanung via Google Maps** | Automatische Routenplanung durch anklicken der kritischen Nodes und weiterleitung an Google Maps | Servicetechniker | 🟠 Should-Have |
 | **F08** | **CSV-Datenexport** | Export historischer Messreihen eines Geräts zur weiteren wissenschaftlichen oder statistischen Auswertung. | Aufgabenstellung | 🟡 Could-Have |
 | **F09** | **Benachrichtigung** | Auslösen einer Benachrichtigung beim Eintritt des Status „Kritisch“. | Servicetechniker / Disponent | 🟡 Could-Have |
+| **F10** | **Batteriewechsel-Historie** | Empfang von Batterie-Tausch- und Entsorgungsereignissen per MQTT (Format: `data/exchange.example.json`, `data/discard.example.json`), Anzeige der aktuell verbauten Batterie und der Wechselhistorie in der Detailansicht. Doppelt zugestellte Ereignisse werden über die `eventId` erkannt. | Servicetechniker / Betriebsleiter | 🟠 Should-Have |
 
 ## 🧱 6. Nicht-funktionale Anforderungen
 
@@ -169,7 +171,8 @@ Zur Vermeidung von Missverständnissen zwischen Stakeholdern, Entwicklern und Pr
 Das Softwaresystem folgt einer entkoppelten, 4-schichtigen Service-Architektur:
 
 1. **Datenerzeugung:**
-   - Echte TrafficNodes publizieren Messpakete im JSON-Format.
+   - Echte TrafficNodes publizieren Messpakete im JSON-Format an den Kurs-Broker `mqtt.ti-labs.ai` ([MQTT-Schnittstellenvertrag](docs/interfaces/mqtt-contract.md)).
+   - Für Demo und Lasttests erzeugt ein In-Process-Simulator Nachrichten im selben Format.
 2. **Ingestion & Business-Logik (Backend):**
    - **MQTT Ingestion Worker:** Nimmt Datenströme asynchron entgegen, parst und validiert die Nutzlast.
    - **Rules Engine:** Führt die Glättung durch, prüft Schwellenwerte und ermittelt den aktuellen Status (Normal, Warnung, Kritisch, Offline).
@@ -184,11 +187,56 @@ Das Softwaresystem folgt einer entkoppelten, 4-schichtigen Service-Architektur:
 Die detaillierten Architekturentscheidungen und deren Begründungen sind in den [Architecture Decision Records (ADR)](docs/adr/ADR.md) dokumentiert:
 
 - **Architektur-Stil:** Modularer Monolith (ASP.NET Core Solution) ([ADR-01](docs/adr/ADR.md#adr-01-architektur-stil-modularer-monolith-vs-microservices))
-- **Protokoll & Broker:** MQTT (Eclipse Mosquitto) & .NET `MQTTnet` Worker ([ADR-04](docs/adr/ADR.md#adr-04-telemetrie-ingestion-protokoll-mqtt-vs-http-post))
-- **Backend & Ingestion:** ASP.NET Core (.NET 8/9), Event-driven Verarbeitung mit In-Memory-Events (MediatR/Channels) ([ADR-01](docs/adr/ADR.md#adr-01-architektur-stil-modularer-monolith-vs-microservices), [ADR-07](docs/adr/ADR.md#adr-07-interne-datenverarbeitung-event-driven-architektur))
-- **Frontend:** ASP.NET Core Blazor (Interactive Server / Razor Components) mit SignalR & Leaflet/Charts ([ADR-02](docs/adr.md#adr-02-client---schnittstellen-kommunikation-rest--signalr-vs-reines-messaging), [ADR-05](docs/adr/ADR.md#adr-05-frontend-architektur-aspnet-core-blazor))
+- **Protokoll & Broker:** MQTT über TLS am externen Kurs-Broker `mqtt.ti-labs.ai:8883` & .NET `MQTTnet` Worker ([ADR-04](docs/adr/ADR.md#adr-04-telemetrie-ingestion-protokoll-mqtt-vs-http-post))
+- **Backend & Ingestion:** ASP.NET Core (.NET 8), Event-driven Verarbeitung mit `System.Threading.Channels` ([ADR-01](docs/adr/ADR.md#adr-01-architektur-stil-modularer-monolith-vs-microservices), [ADR-07](docs/adr/ADR.md#adr-07-interne-datenverarbeitung-event-driven-architektur))
+- **Frontend:** ASP.NET Core Blazor (Interactive Server / Razor Components) mit SignalR, Leaflet (OpenStreetMap) & Chart.js ([ADR-02](docs/adr/ADR.md#adr-02-client---schnittstellen-kommunikation-rest--signalr-vs-reines-messaging), [ADR-05](docs/adr/ADR.md#adr-05-frontend-architektur-aspnet-core-blazor))
 - **Datenbank & ORM:** PostgreSQL mit Entity Framework Core & Npgsql (Shared DB mit Schematrennung `core`, `telemetry`, `alerting`) ([ADR-03](docs/adr/ADR.md#adr-03-persistenztechnologie-postgresql-vs-mongodb), [ADR-09](docs/adr/ADR.md#adr-09-datenbank-architektur-gemeinsame-vs-getrennte-datenbanken))
-- **Authentifizierung:** OpenID Connect (OIDC) mit RBAC ([ADR-06](docs/adr/ADR.md#adr-06-authentifizierung--autorisierung-openid-connect--oidc))
+- **Authentifizierung:** OpenID Connect (OIDC) mit Keycloak 26 und RBAC (Rollen `Betriebsleiter`, `Techniker`) ([ADR-06](docs/adr/ADR.md#adr-06-authentifizierung--autorisierung-openid-connect--oidc))
 - **Betrieb & Deployment:** Containerisiert via Docker & Docker Compose ([ADR-08](docs/adr/ADR.md#adr-08-betriebs---deployment-modell-containerisiert-on-premises--docker-compose))
-- **Test- & Simulationswerkzeuge:** xUnit / Moq, Software-Simulator für TrafficNodes
-- **Qualitätssicherung & CI/CD:** GitHub Actions, SonarQube / .NET Code Analysis
+- **Test- & Simulationswerkzeuge:** xUnit, Testcontainers (PostgreSQL), `FakeTimeProvider`, coverlet + ReportGenerator, In-Process-Simulator für TrafficNodes
+- **Qualitätssicherung & CI/CD:** GitHub Actions ([`ci.yml`](.github/workflows/ci.yml): Build mit Analyzern und *Warnings as Errors*, `dotnet format`, Unit- und Integrationstests, Coverage-Gate ≥ 80 %, Docker-Build)
+
+## 🚀 11. Projektstruktur & Getting Started
+
+```
+src/
+  TNWatch.Domain/              Domänenmodell, Statusregeln, SoC-Schätzung, Routen-Link, CSV-Export (ohne Abhängigkeiten)
+  TNWatch.TelemetryIngestion/  MQTT-Worker, Parser/Validierung, Ingestion-Pipeline, Simulator
+  TNWatch.Persistence/         EF Core (PostgreSQL), Schemata core/telemetry/alerting, Migrationen
+  TNWatch.Alerting/            Statusbewertung, Statuswechsel-Protokoll, Offline-Watchdog
+  TNWatch.WebUI/               Host: Blazor-UI (Karte, Dashboard, Routenplaner), REST-API, SignalR, Auth
+tests/                         Unit-Tests je Modul + Integrationstests (Testcontainers)
+deploy/                        docker-compose.yml, .env.example, Keycloak-Realm
+tools/TNWatch.MqttProbe/       Read-only-Werkzeug zur Analyse der Broker-Topics
+```
+
+**Gesamtsystem starten (Docker):**
+
+```bash
+cp deploy/.env.example deploy/.env      # Secrets und MQTT-Zugangsdaten eintragen (Datei ist git-ignoriert)
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+- App: <http://localhost:8080>, Login z. B. `markus` (Betriebsleiter) oder `kevin` / `anja` (Techniker) mit `TNWATCH_DEMO_PASSWORD`
+- Keycloak-Admin: <http://localhost:8081> (Benutzer `admin`, Passwort aus `KEYCLOAK_ADMIN_PASSWORD`)
+- Demo-Daten: Dashboard → Schalter **Simulation** (nur Betriebsleiter)
+
+**Lokale Entwicklung (ohne Keycloak, fester Demo-Benutzer „Markus“):**
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d db
+dotnet run --project src/TNWatch.WebUI          # http://localhost:5080, Auth:Mode=Development
+```
+
+MQTT-Zugangsdaten lokal per `dotnet user-secrets set "Mqtt:Username" …` / `"Mqtt:Password" …` im Projekt `src/TNWatch.WebUI`, oder `Mqtt__Enabled=false` setzen und nur mit dem Simulator arbeiten.
+
+**Tests & Coverage:**
+
+```bash
+dotnet test TNWatch.sln --settings coverage.runsettings --collect:"XPlat Code Coverage" --results-directory TestResults
+dotnet tool restore && dotnet reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:coverage -reporttypes:TextSummary
+```
+
+Die Integrationstests starten PostgreSQL per Testcontainers und benötigen deshalb einen laufenden Docker-Daemon.
+
+**REST-API:** `GET /api/nodes`, `/api/nodes/{id}`, `/api/nodes/{id}/measurements?from&to`, `/api/nodes/{id}/status-changes`, `/api/nodes/{id}/battery-events`, `/api/nodes/{id}/export.csv`, `/api/fleet/summary`; `POST /api/simulator/{on|off}` und `GET /api/diagnostics` (nur Betriebsleiter). Swagger-UI unter `/swagger` (nur Development). Echtzeit-Hub: `/hubs/telemetry`.

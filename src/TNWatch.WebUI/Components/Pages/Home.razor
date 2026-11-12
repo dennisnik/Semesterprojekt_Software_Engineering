@@ -1,0 +1,141 @@
+@page "/"
+@* Single-page map application composed from the three mockups. *@
+@inject FleetViewModel Fleet
+@inject Microsoft.Extensions.Options.IOptions<MapOptions> MapOptions
+@implements IDisposable
+
+<PageTitle>TN-Watch</PageTitle>
+
+<div class="app-shell">
+    <FleetMap @ref="_map" Nodes="Fleet.Nodes" Version="Fleet.Version" RouteMode="_routeMode" RouteSelection="_route"
+              ActiveNodeId="@(_detailsNodeId ?? _popupNodeId)" Options="MapOptions.Value" OnNodeClick="OnNodeClick" />
+
+    <div class="overlay-left">
+        <NavCard RouteMode="_routeMode" DashboardOpen="_dashboardOpen"
+                 OnToggleRoute="ToggleRoute" OnToggleDashboard="ToggleDashboard" OnFitAll="FitAll" />
+        @if (_routeMode)
+        {
+            <RoutePlannerPanel Nodes="RouteNodes" CriticalAvailable="Fleet.Nodes.Any(n => n.Status == NodeStatus.Critical && !_route.Contains(n.Id))"
+                               OnRemove="RemoveFromRoute" OnClear="() => _route.Clear()" OnSelectCritical="SelectCritical" />
+        }
+    </div>
+
+    @if (_dashboardOpen)
+    {
+        <DashboardPanel Nodes="Fleet.Nodes" Summary="Fleet.Summary" SimulatorRunning="Fleet.SimulatorRunning"
+                        CanControlSimulator="_isManager" OnSetSimulator="Fleet.SetSimulatorAsync"
+                        OnDetails="OpenDetails" OnShowOnMap="ShowOnMap" OnClose="() => _dashboardOpen = false" />
+    }
+
+    @if (Fleet.Find(_detailsNodeId) is { } detailsNode)
+    {
+        <NodeDetails Node="detailsNode" OnClose="() => _detailsNodeId = null" />
+    }
+    else if (_map is not null && Fleet.Find(_popupNodeId) is { } popupNode)
+    {
+        <NodePopup Node="popupNode" Map="_map" OnDetails="() => OpenDetails(popupNode.Id)" OnClose="() => _popupNodeId = null" />
+    }
+</div>
+
+@code {
+    private FleetMap? _map;
+    private bool _routeMode;
+    private bool _dashboardOpen;
+    private bool _isManager;
+    private string? _popupNodeId;
+    private string? _detailsNodeId;
+    private readonly List<string> _route = [];
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private IReadOnlyList<NodeSnapshot> RouteNodes => _route.Select(Fleet.Find).OfType<NodeSnapshot>().ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            _isManager = (await AuthState).User.IsInRole(Roles.Betriebsleiter);
+        }
+
+        Fleet.Changed += OnFleetChanged;
+        await Fleet.InitializeAsync();
+    }
+
+    private Task OnFleetChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnNodeClick(string id)
+    {
+        if (_routeMode)
+        {
+            if (!_route.Remove(id))
+            {
+                _route.Add(id);
+            }
+
+            return;
+        }
+
+        _popupNodeId = _popupNodeId == id ? null : id;
+    }
+
+    private void ToggleRoute()
+    {
+        _routeMode = !_routeMode;
+        _popupNodeId = null;
+        if (_routeMode)
+        {
+            _dashboardOpen = false;
+            _detailsNodeId = null;
+        }
+    }
+
+    private void ToggleDashboard()
+    {
+        _dashboardOpen = !_dashboardOpen;
+        if (_dashboardOpen)
+        {
+            _routeMode = false;
+            _popupNodeId = null;
+        }
+    }
+
+    private void OpenDetails(string id)
+    {
+        _detailsNodeId = id;
+        _popupNodeId = null;
+    }
+
+    private async Task ShowOnMap(string id)
+    {
+        _dashboardOpen = false;
+        _detailsNodeId = null;
+        _popupNodeId = id;
+        if (_map is not null)
+        {
+            await _map.FocusAsync(id);
+        }
+    }
+
+    private async Task FitAll()
+    {
+        if (_map is not null)
+        {
+            await _map.FitAllAsync();
+        }
+    }
+
+    private void RemoveFromRoute(string id) => _route.Remove(id);
+
+    private void SelectCritical()
+    {
+        foreach (var n in Fleet.Nodes.Where(n => n.Status == NodeStatus.Critical && n.Latitude is not null))
+        {
+            if (!_route.Contains(n.Id))
+            {
+                _route.Add(n.Id);
+            }
+        }
+    }
+
+    public void Dispose() => Fleet.Changed -= OnFleetChanged;
+}
