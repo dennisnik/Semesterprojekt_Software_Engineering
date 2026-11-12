@@ -1,0 +1,89 @@
+{
+  "realm": "tnwatch",
+  "displayName": "TN-Watch",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["de", "en"],
+  "defaultLocale": "de",
+  "roles": {
+    "realm": [
+      { "name": "Betriebsleiter", "description": "Flottenmanager / Betriebsleiter: Vollzugriff, Simulator, Benutzerverwaltung" },
+      { "name": "Techniker", "description": "Servicetechniker: Lesezugriff, Routenplanung" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "tnwatch-web",
+      "name": "TN-Watch Web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${TNWATCH_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${TNWATCH_APP_URL}/*"],
+      "webOrigins": ["${TNWATCH_APP_URL}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${TNWATCH_APP_URL}/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "markus",
+      "firstName": "Markus",
+      "lastName": "Betriebsleiter",
+      "email": "markus@tnwatch.local",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "${TNWATCH_DEMO_PASSWORD}", "temporary": false }],
+      "realmRoles": ["Betriebsleiter"],
+      "clientRoles": { "realm-management": ["view-users", "query-users", "manage-users", "view-realm"] }
+    },
+    {
+      "username": "kevin",
+      "firstName": "Kevin",
+      "lastName": "Techniker",
+      "email": "kevin@tnwatch.local",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "${TNWATCH_DEMO_PASSWORD}", "temporary": false }],
+      "realmRoles": ["Techniker"]
+    },
+    {
+      "username": "anja",
+      "firstName": "Anja",
+      "lastName": "Technikerin",
+      "email": "anja@tnwatch.local",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "${TNWATCH_DEMO_PASSWORD}", "temporary": false }],
+      "realmRoles": ["Techniker"]
+    }
+  ]
+}

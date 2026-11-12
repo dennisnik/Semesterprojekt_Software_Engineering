@@ -1,0 +1,94 @@
+# TN-Watch – complete stack (ADR-08): app + PostgreSQL + Keycloak.
+# Telemetry comes from the external course broker (mqtt.ti-labs.ai); the simulator runs inside the app.
+#
+#   cp deploy/.env.example deploy/.env   # then set secrets
+#   docker compose -f deploy/docker-compose.yml up --build
+name: tnwatch
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tn-watch-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tnwatch
+      POSTGRES_USER: tnwatch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"   # local tools / `dotnet run` only, not public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tnwatch -d tnwatch"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    container_name: tn-watch-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
+      KC_DB_USERNAME: tnwatch
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in deploy/.env}
+      # Browser-facing URL; backchannel (token/jwks) requests from the app use the internal host name.
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8081}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Placeholders used by deploy/keycloak/tnwatch-realm.json
+      TNWATCH_APP_URL: ${APP_PUBLIC_URL:-http://localhost:8080}
+      TNWATCH_CLIENT_SECRET: ${TNWATCH_CLIENT_SECRET:?set TNWATCH_CLIENT_SECRET in deploy/.env}
+      TNWATCH_DEMO_PASSWORD: ${TNWATCH_DEMO_PASSWORD:?set TNWATCH_DEMO_PASSWORD in deploy/.env}
+    volumes:
+      - ./keycloak/tnwatch-realm.json:/opt/keycloak/data/import/tnwatch-realm.json:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: tnwatch-app:latest
+    container_name: tn-watch-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__TnWatch: Host=db;Port=5432;Database=tnwatch;Username=tnwatch;Password=${POSTGRES_PASSWORD}
+      Mqtt__Enabled: ${MQTT_ENABLED:-true}
+      Mqtt__Username: ${MQTT_USERNAME:-}
+      Mqtt__Password: ${MQTT_PASSWORD:-}
+      Mqtt__ClientId: ${MQTT_CLIENT_ID:-tnwatch-app}
+      Simulator__StartEnabled: ${SIMULATOR_START_ENABLED:-false}
+      Auth__Mode: Oidc
+      Auth__Authority: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8081}/realms/tnwatch
+      Auth__MetadataAddress: http://keycloak:8080/realms/tnwatch/.well-known/openid-configuration
+      Auth__ClientId: tnwatch-web
+      Auth__ClientSecret: ${TNWATCH_CLIENT_SECRET}
+      Auth__RequireHttpsMetadata: "false"
+      Auth__UserManagementUrl: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8081}/admin/tnwatch/console/
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  db-data:

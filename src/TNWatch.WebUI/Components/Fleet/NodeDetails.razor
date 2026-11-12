@@ -1,0 +1,204 @@
+@* Enlarged node view (Mockup 2 "Details", F05): master data, voltage/current chart, status + battery history, CSV export. *@
+@using TNWatch.Domain.Battery
+@using TNWatch.Domain.Routing
+@inject IFleetQueries Queries
+@inject IJSRuntime JS
+@inject TimeProvider Time
+@inject StatusEvaluator Evaluator
+@implements IAsyncDisposable
+
+<section class="card details-panel" role="dialog" aria-label="Details @Node.Id">
+    <header class="card-header">
+        <div class="title-row">
+            <h2 class="node-title">@Node.Id</h2>
+            <StatusText Status="Node.Status" />
+        </div>
+        <button type="button" class="icon-btn" aria-label="Details schließen" @onclick="OnClose"><Icon Name="close" /></button>
+    </header>
+
+    <div class="panel-body">
+        <div class="details-top">
+            <dl class="kv">
+                <dt>Spannung:</dt>
+                <dd>@Format.Volt(Node.VoltageV)</dd>
+                <dt>Ø letzte 3 Messungen:</dt>
+                <dd>@Format.Volt(Node.SmoothedVoltageV)</dd>
+                <dt>Entladestrom:</dt>
+                <dd>@Format.Ampere(Node.CurrentA)</dd>
+                <dt>Batterie:</dt>
+                <dd>@(Node.BatterySerial ?? "–")</dd>
+                <dt>Letzter Kontakt:</dt>
+                <dd>@Format.DateTime(Node.LastSeenAt) (@Format.Ago(Node.LastSeenAt, Time.GetUtcNow()))</dd>
+            </dl>
+            <dl class="kv">
+                <dt>Mandant:</dt>
+                <dd>@(Node.Tenant ?? "–")</dd>
+                <dt>Quelle:</dt>
+                <dd>@(Node.IsSimulated ? "Simulation" : "TrafficNode (MQTT)")</dd>
+                <dt>Position:</dt>
+                <dd>@Format.Coord(Node.Latitude), @Format.Coord(Node.Longitude)</dd>
+                <dt>Ladezustand:</dt>
+                <dd><BatteryBar Percent="Node.StateOfChargePercent" Status="Node.Status" Large="true" /></dd>
+            </dl>
+        </div>
+
+        <div class="section-head">
+            <h3>Spannungs- und Stromverlauf</h3>
+            <div class="segmented" role="group" aria-label="Zeitraum">
+                @foreach (var (label, days) in Ranges)
+                {
+                    <button type="button" class="@(_days == days ? "is-active" : "")" aria-pressed="@(_days == days)" @onclick="() => SetRangeAsync(days)">@label</button>
+                }
+            </div>
+        </div>
+        <div class="chart-box">
+            <canvas @ref="_canvas" aria-label="Liniendiagramm Spannung und Strom"></canvas>
+            @if (_loaded && _pointCount == 0)
+            {
+                <p class="empty overlay">Keine Messwerte im gewählten Zeitraum.</p>
+            }
+        </div>
+
+        <div class="history-cols">
+            <div>
+                <h3>Statuswechsel</h3>
+                @if (_changes.Count == 0)
+                {
+                    <p class="empty">Keine Statuswechsel.</p>
+                }
+                else
+                {
+                    <ul class="timeline">
+                        @foreach (var c in _changes)
+                        {
+                            <li>
+                                <time>@Format.DateTime(c.OccurredAt)</time>
+                                <span><StatusText Status="c.From" /> → <StatusText Status="c.To" /></span>
+                                <span class="muted">@(c.SmoothedVoltageV is { } v ? "Ø " + Format.Volt(v) : string.Empty)</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+            <div>
+                <h3>Batteriewechsel</h3>
+                @if (_batteryEvents.Count == 0)
+                {
+                    <p class="empty">Keine Batteriewechsel erfasst.</p>
+                }
+                else
+                {
+                    <ul class="timeline">
+                        @foreach (var e in _batteryEvents)
+                        {
+                            <li>
+                                <time>@Format.DateTime(e.OccurredAt)</time>
+                                <span>@(e.Type == BatteryEventType.Exchange ? $"Tausch: {e.OldBatterySerial ?? "?"} → {e.NewBatterySerial}" : $"Entsorgt: {e.OldBatterySerial}")</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+
+    <footer class="card-footer">
+        <a class="btn btn-outline" href="@CsvUrl" download><Icon Name="download" /> CSV-Export</a>
+        @if (Node.Latitude is { } lat && Node.Longitude is { } lon)
+        {
+            <a class="btn btn-outline" href="@GoogleMapsRouteBuilder.Location(lat, lon).AbsoluteUri" target="_blank" rel="noopener"><Icon Name="pin" /> In Google Maps öffnen</a>
+        }
+    </footer>
+</section>
+
+@code {
+    private static readonly (string Label, int Days)[] Ranges = [("24 h", 1), ("7 Tage", 7), ("30 Tage", 30)];
+    private const int MaxChartPoints = 1500;
+    private static readonly TimeSpan LiveReloadInterval = TimeSpan.FromSeconds(15);
+
+    private ElementReference _canvas;
+    private IJSObjectReference? _charts;
+    private string? _loadedNodeId;
+    private DateTimeOffset? _loadedLastSeen;
+    private DateTimeOffset _lastLoad;
+    private int _days = 1;
+    private int _pointCount;
+    private bool _loaded;
+    private bool _renderChart;
+    private IReadOnlyList<MeasurementPoint> _points = [];
+    private IReadOnlyList<StatusChange> _changes = [];
+    private IReadOnlyList<BatteryEvent> _batteryEvents = [];
+    private DateTimeOffset _since;
+    private DateTimeOffset _until;
+
+    [Parameter, EditorRequired] public NodeSnapshot Node { get; set; } = default!;
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string CsvUrl =>
+        $"api/nodes/{Uri.EscapeDataString(Node.Id)}/export.csv?from={Uri.EscapeDataString(_since.UtcDateTime.ToString("O"))}&to={Uri.EscapeDataString(_until.UtcDateTime.ToString("O"))}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var nodeChanged = _loadedNodeId != Node.Id;
+        var newData = Node.LastSeenAt != _loadedLastSeen && Time.GetUtcNow() - _lastLoad >= LiveReloadInterval;
+        if (nodeChanged || newData)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task SetRangeAsync(int days)
+    {
+        _days = days;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loadedNodeId = Node.Id;
+        _loadedLastSeen = Node.LastSeenAt;
+        _lastLoad = Time.GetUtcNow();
+        _until = _lastLoad;
+        _since = _until.AddDays(-_days);
+
+        var measurements = Queries.GetMeasurementsAsync(Node.Id, _since, _until, CancellationToken.None);
+        var changes = Queries.GetStatusChangesAsync(Node.Id, 20, CancellationToken.None);
+        var battery = Queries.GetBatteryEventsAsync(Node.Id, 20, CancellationToken.None);
+        _points = MeasurementDownsampler.Downsample(await measurements, MaxChartPoints);
+        _changes = await changes;
+        _batteryEvents = await battery;
+        _pointCount = _points.Count;
+        _loaded = true;
+        _renderChart = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_renderChart)
+        {
+            return;
+        }
+
+        _renderChart = false;
+        _charts ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/charts.js");
+        var data = _points.Select(p => new { t = p.MeasuredAt.ToUnixTimeMilliseconds(), v = p.VoltageV, c = p.CurrentA });
+        await _charts.InvokeVoidAsync("render", _canvas, data, new { normal = Evaluator.Rules.NormalMinVoltage, warning = Evaluator.Rules.WarningMinVoltage });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_charts is not null)
+        {
+            try
+            {
+                await _charts.InvokeVoidAsync("destroy", _canvas);
+                await _charts.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit already gone.
+            }
+        }
+    }
+}

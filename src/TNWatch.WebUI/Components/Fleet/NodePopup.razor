@@ -1,0 +1,61 @@
+@* Node popup next to the clicked pin (Mockup 2). "Details" enlarges it to the details view. *@
+@inject TimeProvider Time
+@implements IAsyncDisposable
+
+<section class="card node-popup" @ref="_element" role="dialog" aria-label="TrafficNode @Node.Id">
+    <header class="card-header">
+        <h2 class="node-title">@Node.Id</h2>
+        <button type="button" class="icon-btn" aria-label="Schließen" @onclick="OnClose"><Icon Name="close" /></button>
+    </header>
+    <dl class="kv">
+        <dt>Status:</dt>
+        <dd><StatusText Status="Node.Status" /></dd>
+        <dt>Spannung:</dt>
+        <dd>@Format.Volt(Node.VoltageV)</dd>
+        <dt>Entladestrom:</dt>
+        <dd>@Format.Ampere(Node.CurrentA)</dd>
+        <dt>Batterie:</dt>
+        <dd>@(Node.BatterySerial ?? "–")</dd>
+        <dt>Letzter Kontakt:</dt>
+        <dd title="@Format.DateTime(Node.LastSeenAt)">@Format.Ago(Node.LastSeenAt, Time.GetUtcNow())</dd>
+    </dl>
+    <BatteryBar Percent="Node.StateOfChargePercent" Status="Node.Status" Large="true" />
+    <div class="card-actions">
+        <button type="button" class="btn btn-small" @onclick="OnDetails">Details</button>
+    </div>
+</section>
+
+@code {
+    private ElementReference _element;
+    private string? _anchoredId;
+
+    [Parameter, EditorRequired] public NodeSnapshot Node { get; set; } = default!;
+
+    [Parameter, EditorRequired] public FleetMap Map { get; set; } = default!;
+
+    [Parameter] public EventCallback OnDetails { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Re-anchor after every render: the card size may change with new values.
+        _anchoredId = Node.Id;
+        await Map.AnchorAsync(_element, Node.Id);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_anchoredId is not null)
+        {
+            try
+            {
+                await Map.AnchorAsync(null, null);
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit already gone.
+            }
+        }
+    }
+}
