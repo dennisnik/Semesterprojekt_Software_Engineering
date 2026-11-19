@@ -223,6 +223,14 @@ docker compose -f deploy/docker-compose.yml up --build
 - Keycloak-Admin: <http://localhost:8081> (Benutzer `admin`, Passwort aus `KEYCLOAK_ADMIN_PASSWORD`)
 - Demo-Daten: Dashboard → Schalter **Simulation** (nur Betriebsleiter)
 
+**Kursserver (https://tn-watch.ti-labs.ai):**
+
+```bash
+SSH_TARGET=tinf25d-two-and-a-half-men@212.227.31.76 ./deploy/deploy-server.sh   # deployt den committeten Stand
+```
+
+Die Secrets (inkl. Demo-Passwort) liegen nur auf dem Server: `~/tn-watch/deploy/.env`. Einmalig nach dem ersten F11-Update bestehender Installationen: `deploy/keycloak/enable-user-directory.sh`.
+
 **Lokale Entwicklung (ohne Keycloak, fester Demo-Benutzer „Markus“):**
 
 ```bash

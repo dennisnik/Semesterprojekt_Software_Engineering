@@ -116,6 +116,9 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │
 ├── deploy/                       Everything needed to run the full system with Docker
 │   ├── docker-compose.yml        3 containers: app, db (PostgreSQL 16), keycloak
+│   ├── docker-compose.server.yml Overlay for the course server: only port 21301, Keycloak under /auth, + proxy
+│   ├── caddy/Caddyfile           Server entry proxy: /auth/* → Keycloak, rest → app
+│   ├── deploy-server.sh          Deploys the committed state to the course server (build on the server)
 │   ├── .env.example              Template for secrets/ports → copy to deploy/.env (ignored)
 │   ├── keycloak/tnwatch-realm.json  Keycloak realm: client, roles, demo users (imported at start)
 │   ├── keycloak/enable-user-directory.sh  One-off upgrade of an existing realm for F11 (service account rights)
@@ -447,6 +450,18 @@ On top (synthetic nodes only): ±0.03 V noise and a 5 % chance per message of a 
 
 **CI** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs on every push to `main` and every pull request: build → format check → all tests with coverage → fails below 80 % → builds the Docker image.
 
+**Course server** (https://tn-watch.ti-labs.ai, [ADR-08 addendum](adr/ADR.md#adr-08-betriebs---deployment-modell-containerisiert-on-premises--docker-compose)):
+
+```
+Browser ──HTTPS──▶ course Caddy (TLS, Let's Encrypt) ──HTTP──▶ 127.0.0.1:21301 tn-watch-proxy (Caddy)
+                                                                   ├─ /auth/* ─▶ tn-watch-keycloak
+                                                                   └─ /*      ─▶ tn-watch-app ─▶ tn-watch-db
+```
+
+- Deploy: `SSH_TARGET=tinf25d-two-and-a-half-men@212.227.31.76 ./deploy/deploy-server.sh`. It transfers only committed files (`git archive`), builds the image on the server (x86_64) and restarts with `docker-compose.yml` + `docker-compose.server.yml`.
+- Secrets exist only on the server in `~/tn-watch/deploy/.env` (randomly generated, `chmod 600`); the deployed commit is written to `~/tn-watch/DEPLOYED_REVISION`.
+- The app sits behind two proxies; it trusts `X-Forwarded-Proto/Host`, so login cookies and redirects use `https://tn-watch.ti-labs.ai`.
+
 **Docker** ([`Dockerfile`](../Dockerfile), [`deploy/docker-compose.yml`](../deploy/docker-compose.yml)):
 - The image is built in two stages: the large SDK image compiles, the small ASP.NET runtime image runs it as a non-root user.
 - Compose starts `db` first, then `keycloak` (waits for a healthy DB), then `app` (waits for both).
@@ -503,7 +518,6 @@ On top (synthetic nodes only): ±0.03 V noise and a 5 % chance per message of a 
 
 - **Only one live node so far, without GPS.** Since 19.11.2026 `TN0001` sends on `traffic-nodes/TN0001/measurements`, but with `lat`/`lon` = `null`, so it is not shown on the map. The topic of battery events is still unknown ([mqtt-contract.md §4](interfaces/mqtt-contract.md#4-beobachtungen-am-kurs-broker-discovery-12112026)).
 - **MQTT is off in the local Docker setup** (`MQTT_ENABLED=false` in `deploy/.env`); set the course credentials there to receive live data.
-- **HTTP only.** For the course server a TLS reverse proxy is required.
 - **No data retention job yet.** README §4 plans 90 days of raw data; old measurements are currently kept forever.
 - **C4 SVGs** in `docs/architecture/c4/` must be re-exported from the updated `workspace.dsl`.
 
