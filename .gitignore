@@ -1,0 +1,21 @@
+# --- Secrets (never commit) ---
+.env
+data/*.yaml
+data/*.yml
+**/appsettings.*.local.json
+*.pfx
+
+# --- .NET ---
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# --- IDE / OS ---
+.idea/
+.DS_Store

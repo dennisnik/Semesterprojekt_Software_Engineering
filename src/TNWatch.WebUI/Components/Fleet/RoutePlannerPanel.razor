@@ -1,0 +1,77 @@
+@* "Ausgewählte Nodes" card + "zu Google Maps" (Mockup 1, F07). Nodes are (de)selected by clicking pins. *@
+@using TNWatch.Domain.Routing
+
+<section class="card route-card" aria-label="Routenplaner">
+    <header class="card-header">
+        <h2>Ausgewählte Nodes</h2>
+        @if (Nodes.Count > 0)
+        {
+            <button type="button" class="link-btn" @onclick="OnClear">Leeren</button>
+        }
+    </header>
+
+    @if (Nodes.Count == 0)
+    {
+        <p class="hint">Nodes auf der Karte anklicken, um sie zur Route hinzuzufügen.</p>
+    }
+    else
+    {
+        <ol class="route-list">
+            @foreach (var n in Nodes)
+            {
+                <li @key="n.Id">
+                    <span class="node-id">@n.Id</span>
+                    <StatusText Status="n.Status" />
+                    <BatteryBar Percent="n.StateOfChargePercent" Status="n.Status" />
+                    <button type="button" class="icon-btn small" aria-label="@n.Id entfernen" @onclick="() => OnRemove.InvokeAsync(n.Id)"><Icon Name="close" /></button>
+                </li>
+            }
+        </ol>
+    }
+
+    @if (CriticalAvailable)
+    {
+        <button type="button" class="link-btn" @onclick="OnSelectCritical">Alle kritischen auswählen</button>
+    }
+
+    @if (TooMany)
+    {
+        <p class="warn">Google Maps unterstützt max. @GoogleMapsRouteBuilder.MaxStops Stopps.</p>
+    }
+
+    <footer class="card-footer">
+        @if (RouteUrl is { } url)
+        {
+            <a class="btn btn-outline" href="@url" target="_blank" rel="noopener">zu Google Maps</a>
+        }
+        else
+        {
+            <button type="button" class="btn btn-outline" disabled>zu Google Maps</button>
+        }
+    </footer>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<NodeSnapshot> Nodes { get; set; } = [];
+
+    [Parameter] public bool CriticalAvailable { get; set; }
+
+    [Parameter] public EventCallback<string> OnRemove { get; set; }
+
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    [Parameter] public EventCallback OnSelectCritical { get; set; }
+
+    private bool TooMany => Nodes.Count > GoogleMapsRouteBuilder.MaxStops;
+
+    private string? RouteUrl
+    {
+        get
+        {
+            var stops = Nodes.Where(n => n.Latitude is not null && n.Longitude is not null)
+                .Select(n => new RouteStop(n.Id, n.Latitude!.Value, n.Longitude!.Value))
+                .ToList();
+            return stops.Count == 0 || TooMany ? null : GoogleMapsRouteBuilder.Build(stops).AbsoluteUri;
+        }
+    }
+}

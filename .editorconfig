@@ -1,0 +1,43 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,razor,css,js,html}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = when_multiline:suggestion
+dotnet_sort_system_directives_first = true
+# Allow "Async" suffix-less test methods and German domain terms
+dotnet_diagnostic.CA1707.severity = none
+# Logging: structured templates are fine without LoggerMessage source generators in an MVP
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+# Domain code formats numbers explicitly where culture matters
+dotnet_diagnostic.CA1305.severity = suggestion
+dotnet_diagnostic.CA1307.severity = suggestion
+dotnet_diagnostic.CA1310.severity = suggestion
+dotnet_diagnostic.CA1311.severity = suggestion
+dotnet_diagnostic.CA1304.severity = suggestion
+# ConfigureAwait not needed in ASP.NET Core
+dotnet_diagnostic.CA2007.severity = none
+# Result<T>.Ok/Fail factories are an accepted idiom
+dotnet_diagnostic.CA1000.severity = none
+# Public API docs not required
+dotnet_diagnostic.CS1591.severity = none
+
+[tests/**.cs]
+dotnet_diagnostic.CA1515.severity = none
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.CA2000.severity = none
+dotnet_diagnostic.CA1001.severity = none
+
+[src/TNWatch.Persistence/Migrations/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

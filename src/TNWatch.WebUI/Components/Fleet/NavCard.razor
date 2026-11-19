@@ -1,0 +1,88 @@
+@* Top-left card from all mockups: "TNWatch" + hamburger, greeting, Routenplaner / Dashboard. *@
+@inject Microsoft.Extensions.Options.IOptions<AuthOptions> AuthOptions
+
+<section class="card nav-card @(_collapsed ? "is-collapsed" : "")" aria-label="Navigation">
+    <header class="card-header">
+        <h1 class="brand">TNWatch</h1>
+        <div class="header-actions">
+            <button type="button" class="icon-btn" aria-label="Menü" aria-expanded="@_menuOpen" @onclick="() => _menuOpen = !_menuOpen">
+                <Icon Name="menu" />
+            </button>
+            <button type="button" class="icon-btn" aria-label="@(_collapsed ? "Ausklappen" : "Einklappen")" @onclick="ToggleCollapse">
+                <Icon Name="@(_collapsed ? "chevron-right" : "chevron-left")" />
+            </button>
+        </div>
+    </header>
+
+    @if (_menuOpen)
+    {
+        <nav class="menu">
+            <div class="menu-user">
+                <strong>@_userName</strong>
+                <span>@(_isManager ? Roles.Betriebsleiter : Roles.Techniker)</span>
+            </div>
+            @if (_isManager && !string.IsNullOrWhiteSpace(AuthOptions.Value.UserManagementUrl))
+            {
+                <a class="menu-item" href="@AuthOptions.Value.UserManagementUrl" target="_blank" rel="noopener">Benutzerverwaltung <Icon Name="external" /></a>
+            }
+            <button type="button" class="menu-item" @onclick="FitAll">Alle Nodes anzeigen</button>
+            <form method="post" action="account/logout">
+                <button type="submit" class="menu-item">Abmelden</button>
+            </form>
+        </nav>
+    }
+
+    @if (!_collapsed)
+    {
+        <p class="greeting">Hallo @_givenName!</p>
+        <div class="nav-buttons">
+            <button type="button" class="nav-btn @(RouteMode ? "is-active" : "")" aria-pressed="@RouteMode" @onclick="OnToggleRoute">Routenplaner</button>
+            <button type="button" class="nav-btn @(DashboardOpen ? "is-active" : "")" aria-pressed="@DashboardOpen" @onclick="OnToggleDashboard">Dashboard</button>
+        </div>
+    }
+</section>
+
+@code {
+    private bool _collapsed;
+    private bool _menuOpen;
+    private string _givenName = string.Empty;
+    private string _userName = string.Empty;
+    private bool _isManager;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    [Parameter] public bool RouteMode { get; set; }
+
+    [Parameter] public bool DashboardOpen { get; set; }
+
+    [Parameter] public EventCallback OnToggleRoute { get; set; }
+
+    [Parameter] public EventCallback OnToggleDashboard { get; set; }
+
+    [Parameter] public EventCallback OnFitAll { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+        {
+            return;
+        }
+
+        var user = (await AuthState).User;
+        _userName = user.Identity?.Name ?? string.Empty;
+        _givenName = user.FindFirst("given_name")?.Value ?? _userName;
+        _isManager = user.IsInRole(Roles.Betriebsleiter);
+    }
+
+    private void ToggleCollapse()
+    {
+        _collapsed = !_collapsed;
+        _menuOpen = false;
+    }
+
+    private async Task FitAll()
+    {
+        _menuOpen = false;
+        await OnFitAll.InvokeAsync();
+    }
+}

@@ -1,0 +1,118 @@
+@* Dashboard overlay (Mockup 3, F03): simulation toggle, KPI tiles, search, fleet table. *@
+
+<section class="card dashboard-panel" aria-label="Dashboard">
+    <header class="card-header">
+        <h2>Dashboard</h2>
+        <button type="button" class="icon-btn" aria-label="Dashboard schließen" @onclick="OnClose"><Icon Name="close" /></button>
+    </header>
+
+    <div class="panel-body">
+        <div class="sim-toggle" role="group" aria-label="Simulation">
+            <span class="sim-label">Simulation</span>
+            <button type="button" class="sim-state @(SimulatorRunning ? "is-on" : "")" aria-pressed="@SimulatorRunning"
+                    disabled="@(!CanControlSimulator || _toggling)" title="@(CanControlSimulator ? "Simulator umschalten" : "Nur für Betriebsleiter")"
+                    @onclick="ToggleSimulator">
+                @(SimulatorRunning ? "An" : "Aus")
+            </button>
+        </div>
+
+        <div class="kpis" role="group" aria-label="Statusübersicht">
+            @KpiTile("Gesamt", Summary.Total, null)
+            @KpiTile("Normal", Summary.Normal, NodeStatus.Normal)
+            @KpiTile("Warnung", Summary.Warning, NodeStatus.Warning)
+            @KpiTile("Kritisch", Summary.Critical, NodeStatus.Critical)
+            @KpiTile("Offline", Summary.Offline, NodeStatus.Offline)
+        </div>
+
+        <label class="search">
+            <span class="visually-hidden">Suche</span>
+            <input type="search" placeholder="Suche…" @bind="_query" @bind:event="oninput" />
+            <Icon Name="search" />
+        </label>
+
+        <div class="table-wrap">
+            <table class="fleet-table">
+                <thead>
+                    <tr>
+                        <th scope="col">ID</th>
+                        <th scope="col">Status</th>
+                        <th scope="col" class="num">Spannung</th>
+                        <th scope="col" class="num">Entladestrom</th>
+                        <th scope="col">Ladezustand</th>
+                        <th scope="col"><span class="visually-hidden">Aktionen</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var n in Filtered)
+                    {
+                        <tr @key="n.Id" class="@(n.Status == NodeStatus.Critical ? "row-critical" : "")">
+                            <td data-label="ID" class="node-id">@n.Id</td>
+                            <td data-label="Status"><StatusText Status="n.Status" /></td>
+                            <td data-label="Spannung" class="num">@Format.Volt(n.VoltageV)</td>
+                            <td data-label="Entladestrom" class="num">@Format.Ampere(n.CurrentA)</td>
+                            <td data-label="Ladezustand"><BatteryBar Percent="n.StateOfChargePercent" Status="n.Status" LabelBelow="true" /></td>
+                            <td class="actions-cell">
+                                <div class="row-actions">
+                                    <button type="button" class="btn btn-small" @onclick="() => OnDetails.InvokeAsync(n.Id)">Details</button>
+                                    <button type="button" class="btn btn-small btn-ghost" disabled="@(n.Latitude is null)" @onclick="() => OnShowOnMap.InvokeAsync(n.Id)">Auf Karte</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!Filtered.Any())
+            {
+                <p class="empty">@(Nodes.Count == 0 ? "Noch keine TrafficNodes empfangen." : "Keine Treffer.")</p>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private string _query = string.Empty;
+    private NodeStatus? _statusFilter;
+    private bool _toggling;
+
+    [Parameter, EditorRequired] public IReadOnlyList<NodeSnapshot> Nodes { get; set; } = [];
+
+    [Parameter, EditorRequired] public FleetSummary Summary { get; set; } = new(0, 0, 0, 0, 0, 0);
+
+    [Parameter] public bool SimulatorRunning { get; set; }
+
+    [Parameter] public bool CanControlSimulator { get; set; }
+
+    [Parameter] public EventCallback<bool> OnSetSimulator { get; set; }
+
+    [Parameter] public EventCallback<string> OnDetails { get; set; }
+
+    [Parameter] public EventCallback<string> OnShowOnMap { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private IEnumerable<NodeSnapshot> Filtered => Nodes.Where(n =>
+        (_statusFilter is null || n.Status == _statusFilter) &&
+        (string.IsNullOrWhiteSpace(_query) ||
+         n.Id.Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase) ||
+         Format.Label(n.Status).Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase)));
+
+    private RenderFragment KpiTile(string label, int value, NodeStatus? status) =>
+        @<button type="button" class="kpi @(status is { } s ? Format.Css(s) : "status-all") @(_statusFilter == status ? "is-active" : "")"
+                 aria-pressed="@(_statusFilter == status)" @onclick="() => _statusFilter = status">
+            <span class="kpi-label">@label</span>
+            <span class="kpi-value">@value</span>
+        </button>;
+
+    private async Task ToggleSimulator()
+    {
+        _toggling = true;
+        try
+        {
+            await OnSetSimulator.InvokeAsync(!SimulatorRunning);
+        }
+        finally
+        {
+            _toggling = false;
+        }
+    }
+}

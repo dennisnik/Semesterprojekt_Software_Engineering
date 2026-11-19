@@ -1,0 +1,5 @@
+<span class="status-text @Format.Css(Status)"><span class="status-dot" aria-hidden="true"></span>@Format.Label(Status)</span>
+
+@code {
+    [Parameter, EditorRequired] public NodeStatus Status { get; set; }
+}

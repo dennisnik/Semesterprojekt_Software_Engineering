@@ -5,8 +5,12 @@
 ```
 docs/
 ├── README.md                  
+├── IMPLEMENTATION.md          # Implementation guide: file tree, data flow, decisions
 ├── adr/                       # Architecture Decision Records
 │   └── ADR.md                 
+├── interfaces/                # Schnittstellenverträge
+│   └── mqtt-contract.md       # MQTT-Topics & Payloads (Ingestion)
+├── mockup/                    # UI-Mockups (Vorlage für die Weboberfläche)
 ├── architecture/              # C4-Architekturmodel
 │   ├── workspace.dsl          
 │   └── c4/                    
@@ -31,12 +35,24 @@ Das System ist nach dem **C4-Modell** strukturiert und mit **[Structurizr](https
 ![System Context](architecture/c4/SystemContext.svg)
 
 ### C4 Level 2: Container
-Verteilung auf die Container (Eclipse Mosquitto MQTT Broker, PostgreSQL Datenbank und Modularer ASP.NET Core Monolith).
+Verteilung auf die Container (Modularer ASP.NET Core Monolith, PostgreSQL Datenbank, Keycloak) und den externen Kurs-Broker.
 ![Containers](architecture/c4/Containers.svg)
 
 ### C4 Level 3: Komponenten
 Aufbau der Webanwendung (Blazor UI, SignalR Realtime Hub, MQTT Ingestion Worker, Event Bus, Status Evaluation Engine, EF Core).
 ![Components](architecture/c4/Components.svg)
+
+---
+
+## 🧭 Implementierung
+
+* **[Implementation Guide](IMPLEMENTATION.md):** what was built, how a message flows through the system, annotated file tree, design decisions, requirement traceability.
+
+---
+
+## 🔌 Schnittstellen (`interfaces/`)
+
+* **[MQTT-Schnittstellenvertrag](interfaces/mqtt-contract.md):** Broker, Topic-Schema, Payload-Felder und Einheiten, Validierungsregeln, Batterie-Ereignisse und Ergebnisse der Broker-Analyse.
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "current_mA": 0.00,
+  "voltage_mV": 0.00,
+  "lat": null,
+  "lon": null,
+  "altitude_m": null,
+  "satellites": null,
+  "time": null,
+  "temperature_C": 0.00
+}

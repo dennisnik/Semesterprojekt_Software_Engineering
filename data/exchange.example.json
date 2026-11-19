@@ -1,0 +1,13 @@
+{
+  "eventId": "a3d364ef-9e0b-45b7-a6f5-087047fca142",
+  "date": "2026-11-05",
+  "time": "11:30:00.000",
+  "newBat": "BAT0001",
+  "oldBat": "BAT0002",
+  "trafficNode": "TN0001",
+  "position": {
+    "latitude": 52.52,
+    "longitude": 13.405,
+    "accuracy": 8
+  }
+}

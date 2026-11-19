@@ -1,0 +1,8 @@
+Portbereich:
+two and a half men (tinf25d-two-and-a-half-men): Von 21300 bis 21399
+
+Gemeinsame Gruppenbereiche:
+SSH: 22
+HTTP Challenge: 80
+Historien PostgreSQL: 5432
+MQTT mit TLS: 8883

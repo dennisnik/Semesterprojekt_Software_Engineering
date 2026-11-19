@@ -143,6 +143,11 @@ Topic-Schema: `tn-watch/nodes/{nodeId}/telemetry` und `tn-watch/nodes/{nodeId}/s
 #### Mitigation
 - Eclipse Mosquitto ist extrem leichtgewichtig (benötigt < 10 MB RAM) und lässt sich unkompliziert per Docker Compose orchestrieren.
 
+### Nachtrag (12.11.2026): Externer Kurs-Broker statt eigenem Mosquitto
+- Telemetrie kommt **ausschließlich vom bereitgestellten Kurs-Broker** `mqtt.ti-labs.ai:8883` (TLS ≥ 1.2, Zugangsdaten der Gruppe). Ein eigener Mosquitto-Container entfällt.
+- Das Topic-Schema richtet sich nach den realen TrafficNodes: `traffic-device/{tenant}/trafficnode/{nodeId}/status`, Payload im Format von `data/sample_msg.json` (mV/mA). Topics sind konfigurierbar. Details: [MQTT-Schnittstellenvertrag](../interfaces/mqtt-contract.md).
+- **Konsequenz:** weniger Betriebsaufwand, dafür abhängig von der Verfügbarkeit des Kurs-Brokers. Mitigiert durch persistente Session (QoS 1, feste Client-ID) und automatischen Reconnect (NFA03).
+
 ---
 
 ## ADR-05: Frontend-Architektur (ASP.NET Core Blazor)
@@ -201,6 +206,11 @@ Wir implementieren die Authentifizierung über **OpenID Connect (OIDC)** auf Bas
 #### Mitigation
 - Nutzung standardisierter ASP.NET Core Middleware (`Microsoft.AspNetCore.Authentication.OpenIdConnect`). Für lokale Entwicklungstests und CI-Pipelines kann ein schlanker Mock/Test-IDP oder ein containerisiertes Keycloak-Profil bereitgestellt werden.
 
+### Nachtrag (12.11.2026): Umsetzung
+- **Keycloak 26** läuft als Container im Compose-Stack. Der Realm `tnwatch` wird beim Start importiert ([`deploy/keycloak/tnwatch-realm.json`](../../deploy/keycloak/tnwatch-realm.json)): Client `tnwatch-web` (Authorization Code + PKCE), Realm-Rollen `Betriebsleiter` / `Techniker` als Claim `roles`, Demo-Benutzer `markus`, `kevin`, `anja`. Passwörter und Client-Secret kommen aus `deploy/.env` (NFA08).
+- **Benutzer- und Rechteverwaltung** erfolgt in der Keycloak-Admin-Konsole des Realms. Der Betriebsleiter hat dafür die Rollen `realm-management/manage-users`; das Menü der App verlinkt dorthin.
+- Für lokale Entwicklung ohne Keycloak gibt es `Auth:Mode=Development` (fester Demo-Benutzer). Dieser Modus ist **nur** in der Development-Umgebung zulässig, sonst bricht der Start ab.
+
 ---
 
 ## ADR-07: Interne Datenverarbeitung (Event-Driven Architektur)
@@ -239,6 +249,12 @@ Mehrere Handler reagieren asynchron und unabhängig auf das Ereignis:
 #### Mitigation
 - Transaktionsrelevante Schritte (Persistenz) werden priorisiert ausgeführt; strukturierte Logging-Pipelines (`Serilog`) erfassen Event-Verarbeitungsschritte lückenlos.
 
+### Nachtrag (12.11.2026): `System.Threading.Channels` statt MediatR
+- MediatR ist ab Version 13 kommerziell lizenziert und verletzt damit die Randbedingung „freie Lizenzen“. Umgesetzt wird daher die im ADR genannte Alternative **`System.Threading.Channels`**.
+- Ablauf: Producer (`MqttIngestionWorker`, `TelemetrySimulator`) → begrenzter `IngestionChannel` (Back-Pressure) → `IngestionPipelineService` (Parsen/Validieren) → `ITelemetryHandler` / `IBatteryLifecycleHandler` (Modul Alerting) → `IFleetNotifier` → Blazor-Circuits und SignalR-Hub.
+- Messwert, Geräte-Snapshot, Statusbewertung und Statuswechsel werden **in einer Transaktion** gespeichert, *bevor* das UI benachrichtigt wird. Damit ist das oben genannte Risiko (Push ohne Persistenz) ausgeschlossen.
+- Ein `OfflineWatchdog` prüft periodisch, ob Nodes seit ≥ 30 min schweigen, denn ausbleibende Nachrichten lösen selbst kein Ereignis aus.
+
 ---
 
 ## ADR-08: Betriebs- & Deployment-Modell (Containerisiert On-Premises / Docker Compose)
@@ -271,6 +287,13 @@ Das System wird als Multi-Container-Setup betrieben:
 #### Mitigation
 - Für die Anforderungen des Projekts (bis zu 1.000 Geräte) ist die Single-Node-Docker-Performance mehr als ausreichend. Backups werden über standardisierte Docker-Volume-Skripte realisiert.
 
+### Nachtrag (12.11.2026): Tatsächliche Container
+1. `tn-watch-app`: ASP.NET Core / Blazor Server inklusive **In-Process-Simulator**, der über den Dashboard-Schalter „Simulation“ (nur Betriebsleiter) gesteuert wird
+2. `tn-watch-db`: PostgreSQL 16 (Datenbanken `tnwatch` und `keycloak`)
+3. `tn-watch-keycloak`: Identity Provider (ADR-06)
+
+Es gibt keinen eigenen Broker (siehe Nachtrag ADR-04). Der Simulator speist seine Nachrichten direkt in die Ingestion-Pipeline ein (gleicher Parser, gleiche Validierung) und publiziert **nie** auf den geteilten Kurs-Broker. Secrets stehen in `deploy/.env` (nicht versioniert). Auf dem Kursserver werden die Ports aus dem Gruppenbereich 21300–21399 verwendet.
+
 ---
 
 ## ADR-09: Datenbank-Architektur (Gemeinsame vs. Getrennte Datenbanken)
@@ -301,6 +324,10 @@ Wir verwenden eine **gemeinsame PostgreSQL-Datenbank mit logischer Schematrennun
 #### Mitigation
 - PostgreSQL verarbeitet Tabellen mit Millionen Zeilen mühelos, insbesondere bei sauber gesetzten Indizes auf `(node_id, timestamp)`. Sollte die Telemetrie extrem anwachsen, kann das Schema `telemetry` ohne Architekturumbruch auf eine partitionierte Tabelle umgestellt werden.
 
+### Nachtrag (12.11.2026)
+- Tabellen: `core.traffic_nodes`, `core.battery_events`, `core.data_protection_keys`, `telemetry.measurements` (Index `(node_id, measured_at DESC)`), `alerting.status_changes`. Das Schema wird per EF-Core-Migration beim Start erzeugt.
+- Keycloak nutzt eine eigene Datenbank `keycloak` auf derselben PostgreSQL-Instanz (ein DB-Server, getrennte Datenbestände).
+
 ---
 
 ## Zusammenfassung der Architekturentscheidungen
@@ -310,9 +337,9 @@ Wir verwenden eine **gemeinsame PostgreSQL-Datenbank mit logischer Schematrennun
 | **ADR-01** | Architektur-Stil | **Modularer Monolith (.NET)** | Minimale Komplexität, optimale Team-Produktivität, perfekte Eignung für Mengengerüst |
 | **ADR-02** | Schnittstellen | **REST & SignalR (Hybrid)** | Standard-REST für Stammdaten + SignalR für latenzfreie Telemetrie-Live-Pushes |
 | **ADR-03** | Persistenz | **PostgreSQL (EF Core)** | Relationale Integrität, strukturierte Zeitreihen & Geodaten, ACID-Garantie |
-| **ADR-04** | Telemetrie | **MQTT (Mosquitto)** | Extrem schlankes Binärprotokoll, akkuschonend für Feldgeräte, IoT-Standard |
+| **ADR-04** | Telemetrie | **MQTT (externer Kurs-Broker, TLS)** | Extrem schlankes Binärprotokoll, akkuschonend für Feldgeräte, IoT-Standard |
 | **ADR-05** | Frontend | **ASP.NET Core Blazor** | Einheitlicher C#-Stack, geteilte DTOs, native SignalR-Anbindung für Live-UI |
 | **ADR-06** | Auth | **OpenID Connect (OIDC)** | Höchste Sicherheitsstandards, standardisierte RBAC-Rollenverwaltung |
-| **ADR-07** | Verarbeitung | **Event-Driven (In-Memory)** | Entkopplung von Ingestion, Statusbewertung, Speicherung und UI-Push |
-| **ADR-08** | Deployment | **Docker Compose (On-Prem)** | 100 % reproduzierbar für Abgabe, keine Cloud-Kosten, einfache Portabilität |
+| **ADR-07** | Verarbeitung | **Event-Driven (In-Memory, Channels)** | Entkopplung von Ingestion, Statusbewertung, Speicherung und UI-Push |
+| **ADR-08** | Deployment | **Docker Compose (App, PostgreSQL, Keycloak)** | 100 % reproduzierbar für Abgabe, keine Cloud-Kosten, einfache Portabilität |
 | **ADR-09** | DB-Strategie | **Gemeinsame DB (getrennte Schemas)** | Ressourcenarm, ACID-transaktionssicher, performante relationale Analysen |
