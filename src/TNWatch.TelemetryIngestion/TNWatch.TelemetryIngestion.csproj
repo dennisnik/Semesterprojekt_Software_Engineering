@@ -12,4 +12,9 @@
   </ItemGroup>
 
 
+  <ItemGroup>
+    <!-- Real measurement series for the simulator replay (see tools/replay-profile). -->
+    <EmbeddedResource Include="Simulation/Profiles/*.csv" LogicalName="TNWatch.Simulation.Profiles.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

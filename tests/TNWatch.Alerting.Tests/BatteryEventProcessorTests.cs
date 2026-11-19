@@ -51,6 +51,22 @@ public class BatteryEventProcessorTests
     }
 
     [Fact]
+    public async Task Duplicate_restores_battery_of_recreated_node_but_never_overwrites()
+    {
+        var id = Guid.NewGuid();
+        await _sut.HandleAsync(Exchange(id), CancellationToken.None); // node unknown → event stored only
+
+        _repo.Nodes.Add(new TrafficNode("TN0001", null, false, T0)); // node (re)created later, battery unknown
+        await _sut.HandleAsync(Exchange(id), CancellationToken.None);
+        Assert.Equal("BAT0001", _repo.Nodes[0].BatterySerial);
+
+        _repo.Nodes[0].InstallBattery("BAT0099");                    // newer exchange happened meanwhile
+        await _sut.HandleAsync(Exchange(id), CancellationToken.None); // old event re-delivered
+        Assert.Equal("BAT0099", _repo.Nodes[0].BatterySerial);
+        Assert.Single(_repo.BatteryEvents);
+    }
+
+    [Fact]
     public async Task Discard_is_stored()
     {
         await _sut.HandleAsync(new BatteryEvent(Guid.NewGuid(), BatteryEventType.Discard, T0, null, null, "BAT0002", null, null, null), CancellationToken.None);
