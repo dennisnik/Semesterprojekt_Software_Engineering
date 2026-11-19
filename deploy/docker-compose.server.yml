@@ -1,0 +1,39 @@
+# Overlay for the course server (tn-watch.ti-labs.ai), used together with docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+#
+# Differences to the local setup:
+# - Only ONE port is published: 127.0.0.1:${PROXY_PORT} (21301). HTTPS is terminated by the course Caddy.
+# - Keycloak runs under the path /auth on the same origin (https://tn-watch.ti-labs.ai/auth).
+# - No DB/Keycloak/app ports on the host (5432 is used by the shared course PostgreSQL).
+services:
+  db:
+    ports: !reset []
+
+  keycloak:
+    ports: !reset []
+    environment:
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_MANAGEMENT_RELATIVE_PATH: /     # keeps the health check at :9000/health/ready
+      KC_HOSTNAME: ${PUBLIC_URL:?set PUBLIC_URL}/auth
+      KC_PROXY_HEADERS: xforwarded
+      TNWATCH_APP_URL: ${PUBLIC_URL}
+
+  app:
+    ports: !reset []
+    environment:
+      Auth__Authority: ${PUBLIC_URL}/auth/realms/tnwatch
+      Auth__MetadataAddress: http://keycloak:8080/auth/realms/tnwatch/.well-known/openid-configuration
+      Auth__UserManagementUrl: ${PUBLIC_URL}/auth/admin/tnwatch/console/
+
+  proxy:
+    image: caddy:2.8-alpine
+    container_name: tn-watch-proxy
+    restart: unless-stopped
+    depends_on:
+      - app
+      - keycloak
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "127.0.0.1:${PROXY_PORT:-21301}:80"

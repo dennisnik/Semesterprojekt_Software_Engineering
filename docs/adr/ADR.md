@@ -304,6 +304,12 @@ Das System wird als Multi-Container-Setup betrieben:
 
 Es gibt keinen eigenen Broker (siehe Nachtrag ADR-04). Der Simulator speist seine Nachrichten direkt in die Ingestion-Pipeline ein (gleicher Parser, gleiche Validierung) und publiziert **nie** auf den geteilten Kurs-Broker. Secrets stehen in `deploy/.env` (nicht versioniert). Auf dem Kursserver werden die Ports aus dem Gruppenbereich 21300–21399 verwendet.
 
+### Nachtrag (19.11.2026): Betrieb auf dem Kursserver
+- Öffentliche Adresse: **https://tn-watch.ti-labs.ai**. HTTPS (Let's-Encrypt-Zertifikat) terminiert der zentrale Caddy des Kurses und leitet an Port **21301** weiter.
+- Ein eigener, schlanker Caddy-Container (`tn-watch-proxy`) ist der einzige veröffentlichte Port (`127.0.0.1:21301`) und verteilt nach Pfad: `/auth/*` → Keycloak (läuft mit `KC_HTTP_RELATIVE_PATH=/auth`), alles andere → App. So reichen ein Hostname und ein Port für App und Login.
+- DB, Keycloak und App veröffentlichen auf dem Server **keine** Host-Ports. Port 5432 gehört der gemeinsamen Kurs-PostgreSQL.
+- Umsetzung: Overlay `deploy/docker-compose.server.yml`, Deployment mit `deploy/deploy-server.sh` (`git archive` → Server, Image-Build auf dem Server, da x86_64). Die Secrets liegen nur auf dem Server in `~/tn-watch/deploy/.env` (`chmod 600`, zufällig generiert).
+
 ---
 
 ## ADR-09: Datenbank-Architektur (Gemeinsame vs. Getrennte Datenbanken)
