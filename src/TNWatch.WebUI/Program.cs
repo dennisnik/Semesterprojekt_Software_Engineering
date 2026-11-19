@@ -33,7 +33,6 @@ builder.Services
 // Web UI + realtime (ADR-02, ADR-05)
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddScoped<FleetViewModel>();
-builder.Services.AddSingleton<TNWatch.WebUI.Ui.StaticAssets>();
 builder.Services.Configure<TNWatch.WebUI.Ui.MapOptions>(builder.Configuration.GetSection(TNWatch.WebUI.Ui.MapOptions.SectionName));
 builder.Services.AddSignalR()
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -46,7 +45,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    o.KnownNetworks.Clear();
+    o.KnownIPNetworks.Clear();
     o.KnownProxies.Clear();
 });
 
@@ -72,11 +71,11 @@ else
 app.UseSerilogRequestLogging(o => o.GetLevel = (ctx, _, ex) =>
     ex is not null || ctx.Response.StatusCode >= 500 ? Serilog.Events.LogEventLevel.Error : Serilog.Events.LogEventLevel.Debug);
 app.UseRequestLocalization(new RequestLocalizationOptions { DefaultRequestCulture = new RequestCulture(german) });
-app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
+app.MapStaticAssets().AllowAnonymous();
 app.MapHealthChecks("/health").AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapFleetApi();

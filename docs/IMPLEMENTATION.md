@@ -94,7 +94,8 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 .
 ├── README.md                     Project spec (requirements F01–F10, NFAs, status rules) + getting started
 ├── TNWatch.sln                   Visual Studio solution: all src/, tests/ and tools/ projects
-├── Directory.Build.props         Build settings for EVERY project: .NET 8, nullable, analyzers, warnings = errors
+├── Directory.Build.props         Build settings for EVERY project: .NET 10, nullable, analyzers, warnings = errors
+├── global.json                   Pins the .NET SDK to 10.0.x (rolls forward to newer 10.0 patches)
 ├── .editorconfig                 Code style + which analyzer rules are relaxed (and why, see comments)
 ├── .gitignore / .dockerignore    What git / the Docker build ignore (secrets: data/*.yaml, .env)
 ├── .config/dotnet-tools.json     Local CLI tools: dotnet-ef (migrations), reportgenerator (coverage report)
@@ -204,7 +205,6 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │       ├── State/FleetViewModel.cs       Per-browser live fleet state (throttled re-render)
 │       ├── Ui/Format.cs                  German number/date format, status labels and CSS classes
 │       ├── Ui/MapOptions.cs              Config: map tiles, start position
-│       ├── Ui/StaticAssets.cs            Cache busting: app.css?v=<hash>, so browsers load updated CSS/JS
 │       ├── Components/
 │       │   ├── App.razor                 HTML shell: loads Leaflet, Chart.js, Blazor
 │       │   ├── Routes.razor              Routing + "must be logged in"
@@ -487,7 +487,6 @@ On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which th
 - **HTTP only.** For the course server a TLS reverse proxy is required.
 - **No data retention job yet.** README §4 plans 90 days of raw data; old measurements are currently kept forever.
 - **The simulator uses synthetic curves**, not a replay of the real CSV.
-- **.NET 8 support ended in November 2026** → upgrade to .NET 10.
 - **C4 SVGs** in `docs/architecture/c4/` must be re-exported from the updated `workspace.dsl`.
 
 ---

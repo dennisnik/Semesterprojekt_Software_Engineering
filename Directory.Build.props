@@ -1,7 +1,7 @@
 <Project>
   <!-- Shared build settings for all TN-Watch projects (NFA06: code quality) -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

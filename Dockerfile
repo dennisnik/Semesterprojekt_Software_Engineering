@@ -1,5 +1,5 @@
 # TN-Watch application image (ADR-08). Build context: repository root.
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Restore first (layer cache): only build settings + project files
@@ -14,7 +14,7 @@ RUN dotnet restore src/TNWatch.WebUI/TNWatch.WebUI.csproj
 COPY src/ src/
 RUN dotnet publish src/TNWatch.WebUI/TNWatch.WebUI.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
 ENV ASPNETCORE_HTTP_PORTS=8080 \

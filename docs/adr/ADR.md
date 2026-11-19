@@ -55,6 +55,11 @@ Die Software wird in klar abgegrenzte Module unterteilt (z. B. `TNWatch.Telemetr
 - Bei der angestrebten Flottengröße (50–1.000 Geräte mit 60-Sekunden-Intervall) liegt die Ingestion-Last bei unter 20 Requests/Sekunde. Ein moderner .NET Core Host verarbeitet problemlos Tausende Requests pro Sekunde auf einer Standard-CPU.
 - Saubere Trennung der Schichten durch Dependency Injection verhindert ungewollte enge Kopplung.
 
+### Nachtrag (19.11.2026): .NET 10 LTS
+- Der Support für .NET 8 endete am 10.11.2026. Die Solution läuft daher auf **.NET 10 (LTS, Support bis 11/2028)**. .NET 11 wurde nicht gewählt, weil es nur ein STS-Release ist.
+- Das Ziel-Framework steht zentral in `Directory.Build.props`, die SDK-Version in `global.json`. Docker-Images und CI verwenden dieselbe Version.
+- Das Upgrade behob außerdem bekannte Sicherheitslücken in transitiven .NET-8-Paketen (`System.Security.Cryptography.Xml`/`Pkcs`) und in `SSH.NET` (über Testcontainers 3.x).
+
 ---
 
 ## ADR-02: Client- & Schnittstellen-Kommunikation (REST & SignalR vs. reines Messaging)
