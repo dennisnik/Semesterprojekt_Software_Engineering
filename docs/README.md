@@ -5,6 +5,7 @@
 ```
 docs/
 ├── README.md                  
+├── IMPLEMENTATION.md          # Implementation guide: file tree, data flow, decisions
 ├── adr/                       # Architecture Decision Records
 │   └── ADR.md                 
 ├── interfaces/                # Schnittstellenverträge
@@ -40,6 +41,12 @@ Verteilung auf die Container (Modularer ASP.NET Core Monolith, PostgreSQL Datenb
 ### C4 Level 3: Komponenten
 Aufbau der Webanwendung (Blazor UI, SignalR Realtime Hub, MQTT Ingestion Worker, Event Bus, Status Evaluation Engine, EF Core).
 ![Components](architecture/c4/Components.svg)
+
+---
+
+## 🧭 Implementierung
+
+* **[Implementation Guide](IMPLEMENTATION.md):** what was built, how a message flows through the system, annotated file tree, design decisions, requirement traceability.
 
 ---
 

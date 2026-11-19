@@ -16,14 +16,14 @@
 
 ## 2. Telemetrie
 
-**Topic-Schema** (konfigurierbar über `Ingestion:TelemetryTopicPatterns`):
+**Topic-Schema** (konfigurierbar über `Ingestion:TelemetryTopicPatterns`, konfigurierte Listen ersetzen die Standardwerte):
 
 ```
-traffic-device/{tenant}/trafficnode/{nodeId}/status
+traffic-nodes/{nodeId}/measurements                    ← live am Kurs-Broker (seit 19.11.2026, z. B. TN0001)
+traffic-device/{tenant}/trafficnode/{nodeId}/status    ← Format des älteren Exports data/traffic_devices_signals.csv
 ```
 
-Beispiel: `traffic-device/dieringer-stark/trafficnode/TSN-002/status` (Quelle: `data/traffic_devices_signals.csv`).
-Die Platzhalter `{tenant}` und `{nodeId}` werden aus dem Topic gelesen. Das MQTT-Abo wird daraus abgeleitet (`traffic-device/+/trafficnode/+/status`).
+Die Platzhalter `{tenant}` und `{nodeId}` werden aus dem Topic gelesen. Die MQTT-Abos werden daraus abgeleitet (`traffic-nodes/+/measurements`, `traffic-device/+/trafficnode/+/status`). Zusätzlich wird `traffic-nodes/#` abonniert (`Mqtt:ExtraSubscriptions`), damit weitere Unter-Topics der Nodes, z. B. Batterie-Ereignisse, ankommen.
 
 **Payload** (Format von `data/sample_msg.json`):
 
@@ -45,7 +45,7 @@ Abgelehnte Nachrichten werden mit Begründung geloggt und gezählt (`/api/diagno
 
 ## 3. Batterie-Ereignisse (F10)
 
-Topic noch nicht festgelegt (`Ingestion:BatteryEventTopicPatterns`, Standard leer). Nachrichten mit Feld `eventId` werden unabhängig vom Topic als Batterie-Ereignis erkannt.
+Topic noch nicht festgelegt (`Ingestion:BatteryEventTopicPatterns`, Standard leer). Nachrichten mit Feld `eventId` werden unabhängig vom Topic als Batterie-Ereignis erkannt. Sendet die Node sie unterhalb von `traffic-nodes/…`, kommen sie über das Zusatz-Abo `traffic-nodes/#` an. Die Node-IDs passen zusammen: Das Beispiel-Ereignis nennt `TN0001`, und genau diese Node sendet live.
 
 | Typ | Beispiel | Erkennung |
 |---|---|---|
@@ -62,5 +62,7 @@ Read-only-Abo `#`, 2 × 3 min + 30 min (Werkzeug: `tools/TNWatch.MqttProbe`):
 - Auf `traffic-device/#` kam **keine** Nachricht an, d. h. im Zeitraum war keine TrafficNode aktiv.
 - Eine andere Kursgruppe sendete Testnachrichten auf `<gruppe>/test` **exakt im Format von `sample_msg.json`** (mV/mA, `lat`/`lon`/`time` = `null`). Das bestätigt das obige Payload-Format inklusive der `null`-Fälle.
 - Es wurden keine Batterie-Ereignisse beobachtet.
+- **19.11.2026:** erneut 10 min auf `#`: **0 Nachrichten**, also weder TrafficNodes noch Testnachrichten anderer Gruppen. Echte Daten liegen weiterhin nicht vor.
+- **19.11.2026, ab ca. 09:40:** Die erste echte Node sendet: `traffic-nodes/TN0001/measurements`, Payload exakt im Format von `sample_msg.json` (U ≈ 12,0 V, I ≈ 50 mA, `lat`/`lon`/`time` = `null`), etwa alle 1–2 Minuten, nicht retained. Ende-zu-Ende geprüft: Die App legt `TN0001` an und bewertet sie als *Warnung*. Ohne GPS erscheint die Node in der Tabelle, aber nicht auf der Karte.
 
-**Offen:** Topic der Batterie-Ereignisse und ob unsere Gruppen-Hardware unter `tinf25d-two-and-a-half-men/...` sendet. Beides lässt sich ohne Codeänderung per Konfiguration ergänzen, z. B. `Ingestion__TelemetryTopicPatterns__1=tinf25d-two-and-a-half-men/{nodeId}`.
+**Offen:** genaues Topic der Batterie-Ereignisse und ob die Nodes künftig GPS senden. Weitere Topics lassen sich ohne Codeänderung per Konfiguration ergänzen, z. B. `Ingestion__TelemetryTopicPatterns__2=tinf25d-two-and-a-half-men/{nodeId}`.
