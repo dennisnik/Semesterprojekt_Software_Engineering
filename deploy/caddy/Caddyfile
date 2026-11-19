@@ -1,0 +1,23 @@
+# TN-Watch entry point on the course server (ADR-08 addendum).
+# The course's central Caddy terminates HTTPS for tn-watch.ti-labs.ai and forwards to port 21301 → this proxy.
+# One public origin for everything: /auth/* → Keycloak, everything else → app.
+{
+	admin off
+	auto_https off
+	servers {
+		# Keep X-Forwarded-Proto/Host from the course proxy (it reaches us via the Docker bridge / localhost).
+		trusted_proxies static private_ranges
+	}
+}
+
+:80 {
+	encode zstd gzip
+
+	handle /auth/* {
+		reverse_proxy keycloak:8080
+	}
+
+	handle {
+		reverse_proxy app:8080
+	}
+}
