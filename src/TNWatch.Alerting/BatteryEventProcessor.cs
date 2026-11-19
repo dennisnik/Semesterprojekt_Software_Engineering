@@ -18,6 +18,16 @@ public sealed class BatteryEventProcessor(
 
         if (await repository.BatteryEventExistsAsync(batteryEvent.EventId, ct))
         {
+            // Already stored. If the node was recreated in the meantime (no battery known), restore its battery from
+            // the event; never overwrite a known battery with an old, re-delivered event.
+            if (batteryEvent is { Type: BatteryEventType.Exchange, NodeId: not null, NewBatterySerial: not null } &&
+                await repository.FindNodeAsync(batteryEvent.NodeId, ct) is { BatterySerial: null } recreated)
+            {
+                recreated.InstallBattery(batteryEvent.NewBatterySerial);
+                await repository.SaveChangesAsync(ct);
+                await notifier.PublishNodeUpdatedAsync(recreated.ToSnapshot());
+            }
+
             logger.LogDebug("Duplicate battery event {EventId} ignored", batteryEvent.EventId);
             return;
         }

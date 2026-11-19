@@ -11,11 +11,25 @@ public enum SimulationProfile
 
     /// <summary>Sends one old message on start, then stays silent → Offline.</summary>
     Silent,
+
+    /// <summary>Replays a real measurement series (one real sample per tick, time-lapse, endless loop).</summary>
+    Replay,
 }
 
 /// <summary>State of one simulated node. Voltage evolves per tick; load spikes demonstrate the smoothing (hysteresis).</summary>
-public sealed class SimulatedNode(string id, double latitude, double longitude, double startVoltage, SimulationProfile profile)
+public sealed class SimulatedNode(
+    string id,
+    double latitude,
+    double longitude,
+    double startVoltage,
+    SimulationProfile profile,
+    IReadOnlyList<ReplaySample>? replay = null)
 {
+    private readonly IReadOnlyList<ReplaySample> _replay = profile != SimulationProfile.Replay ? [] :
+        replay is { Count: > 0 } ? replay : throw new ArgumentException("A replay node needs samples.", nameof(replay));
+
+    private int _replayIndex;
+
     public string Id { get; } = id;
 
     public double Latitude { get; } = latitude;
@@ -65,6 +79,15 @@ public sealed class SimulatedNode(string id, double latitude, double longitude, 
     {
         ArgumentNullException.ThrowIfNull(random);
 
+        if (Profile == SimulationProfile.Replay)
+        {
+            // Real data already contains noise and load peaks → no synthetic additions.
+            var sample = _replay[_replayIndex];
+            _replayIndex = (_replayIndex + 1) % _replay.Count;
+            BaseVoltage = sample.VoltageV;
+            return (sample.VoltageV, sample.CurrentA);
+        }
+
         if (Profile == SimulationProfile.Discharging)
         {
             BaseVoltage = Math.Max(ExchangeVoltage, BaseVoltage - 0.004);
@@ -87,7 +110,7 @@ public sealed class SimulatedNode(string id, double latitude, double longitude, 
     /// <summary>Fixed demo fleet around Stuttgart, matching the mockup pin locations.</summary>
     public static IReadOnlyList<SimulatedNode> DemoFleet() =>
     [
-        new("SIM-001", 48.8781, 9.0717, 11.45, SimulationProfile.Stable),       // Schwieberdingen – Kritisch
+        new("SIM-001", 48.8781, 9.0717, 11.28, SimulationProfile.Replay, ReplayProfile.Tsn002), // Schwieberdingen – real TSN-002 curve (Kritisch)
         new("SIM-002", 48.8756, 9.3980, 12.80, SimulationProfile.Stable),       // Winnenden – Normal
         new("SIM-003", 48.7758, 9.1829, 12.10, SimulationProfile.Stable),       // Stuttgart – Warnung
         new("SIM-004", 48.8020, 9.5270, 12.55, SimulationProfile.Discharging),  // Schorndorf – entlädt sich

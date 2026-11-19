@@ -131,8 +131,9 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │   ├── mockup/*.pdf              The three UI mockups the web UI follows
 │   └── uml/*.puml                Use case + activity diagram (PlantUML)
 │
-├── tools/TNWatch.MqttProbe/      Small console tool: read-only subscription to the broker, logs what arrives
-│   └── Program.cs                (used to discover the real topics/payloads)
+├── tools/
+│   ├── TNWatch.MqttProbe/        Small console tool: read-only subscription to the broker, logs what arrives
+│   └── replay-profile/           Script that extracts the simulator replay profile from data/*.csv
 │
 ├── src/
 │   ├── TNWatch.Domain/                   ── pure business logic, no framework dependencies
@@ -178,7 +179,9 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │   │   │   └── MqttIngestionWorker.cs    MQTT client: connect, subscribe, reconnect, certificate check
 │   │   └── Simulation/
 │   │       ├── SimulatorOptions.cs       Config: node count, interval, start state
-│   │       ├── SimulatedNode.cs          One fake node: location, voltage profile, battery
+│   │       ├── SimulatedNode.cs          One fake node: location, voltage profile (incl. replay), battery
+│   │       ├── ReplayProfile.cs          Loads embedded real measurement series
+│   │       ├── Profiles/tsn-002.csv      Real TSN-002 series (generated from data/, embedded resource)
 │   │       └── TelemetrySimulator.cs     Background service + on/off switch (ISimulatorControl)
 │   │
 │   ├── TNWatch.Persistence/              ── the database
@@ -232,7 +235,7 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │           ├── lib/                      Vendored Leaflet 1.9.4 + Chart.js 4.4.1 (no CDN dependency)
 │           └── favicon.svg
 │
-└── tests/                                ── 152 automated tests
+└── tests/                                ── 160 automated tests
     ├── TNWatch.Domain.Tests/             Status rules, SoC curve, node transitions, CSV, route links
     ├── TNWatch.TelemetryIngestion.Tests/ Parsers with real sample payloads, pipeline, simulator, TLS rule
     ├── TNWatch.Alerting.Tests/           Processors + watchdog against an in-memory fake repository
@@ -350,11 +353,11 @@ The whole app is one page ([`Home.razor`](../src/TNWatch.WebUI/Components/Pages/
 
 **What it is:** a background service inside the app ([`TelemetrySimulator.cs`](../src/TNWatch.TelemetryIngestion/Simulation/TelemetrySimulator.cs)). It is **not** a separate container and never publishes to the shared course broker; it writes into the same ingestion queue the MQTT worker uses. Everything after that (parser, validation, database, status rules, UI) runs exactly as for real data, so the simulator also tests the real pipeline.
 
-**What it's based on:** synthetic profiles. The payload format is the real one (`sample_msg.json`); the voltage curves are not a replay of the CSV.
+**What it's based on:** the payload format is the real one (`sample_msg.json`). **SIM-001 replays real measurements** of node TSN-002 (`data/traffic_devices_signals.csv`, 19.–24.03.2026, 2,229 samples every 3 min): one real sample per tick, i.e. a time-lapse of 4.6 days in about 6 hours, then it starts over. The other nodes use synthetic profiles to show every status colour. The profile is extracted by [`tools/replay-profile/make_replay_profile.py`](../tools/replay-profile/make_replay_profile.py) into [`Simulation/Profiles/tsn-002.csv`](../src/TNWatch.TelemetryIngestion/Simulation/Profiles/tsn-002.csv) and embedded in the assembly, because the Docker build only contains `src/`.
 
 | Node | Location (mockup pins) | Behaviour |
 |---|---|---|
-| SIM-001 | Schwieberdingen | stable at 11.45 V → *Kritisch* |
+| SIM-001 | Schwieberdingen | **replay of the real TSN-002 curve** (11.3 V → 10.7 V with real load peaks) → *Kritisch* |
 | SIM-002 | Winnenden | stable at 12.80 V → *Normal* |
 | SIM-003 | Stuttgart | stable at 12.10 V → *Warnung* |
 | SIM-004 | Schorndorf | **discharges** 0.004 V per tick: *Normal → Warnung → Kritisch*; at 11.0 V its battery is **exchanged** (new serial, back to 12.85 V) |
@@ -362,7 +365,7 @@ The whole app is one page ([`Home.razor`](../src/TNWatch.WebUI/Components/Pages/
 | SIM-006 | Kirchheim unter Teck | stable at 12.90 V → *Normal* |
 | SIM-007 | Esslingen | sends one 40-minute-old message, then nothing → *Offline* |
 
-On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which the moving average smooths out. Every node also gets an initial battery (`SBAT-002-1` etc.) via a real battery event; its event ID is derived from the node ID, so restarting the simulator creates no duplicates.
+On top (synthetic nodes only): ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which the moving average smooths out. Every node also gets an initial battery (`SBAT-002-1` etc.) via a real battery event; its event ID is derived from the node ID, so restarting the simulator creates no duplicates.
 
 **How to use it:** Dashboard → "Simulation | Aus/An" (Betriebsleiter only; technicians see it disabled). Default interval 10 s (`Simulator:Interval`). For load tests set `Simulator:NodeCount=100` and `Simulator:Interval=00:00:05` → 20 messages/s. When switched off, simulated nodes disappear from map and table; their data stays in the database and reappears when switched on.
 
@@ -418,8 +421,8 @@ On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which th
 | Project | Tests | What is covered | Technique |
 |---|---|---|---|
 | `TNWatch.Domain.Tests` | 59 | Thresholds at exactly 12.4/11.8 V and 30 min, smoothing, SoC curve, node transitions, CSV, route links | Pure unit tests |
-| `TNWatch.TelemetryIngestion.Tests` | 57 | Parsers with the real sample payloads, topic patterns, pipeline routing, simulator output incl. battery events, certificate rule | Unit tests, `FakeTimeProvider` |
-| `TNWatch.Alerting.Tests` | 23 | Processors, watchdog, assignment service incl. 20 concurrent claims | In-memory [`FakeTelemetryRepository`](../tests/TNWatch.Alerting.Tests/FakeTelemetryRepository.cs) that behaves like a transaction |
+| `TNWatch.TelemetryIngestion.Tests` | 64 | Parsers with the real sample payloads, topic patterns, pipeline routing, simulator output incl. battery events, certificate rule | Unit tests, `FakeTimeProvider` |
+| `TNWatch.Alerting.Tests` | 24 | Processors, watchdog, assignment service incl. 20 concurrent claims | In-memory [`FakeTelemetryRepository`](../tests/TNWatch.Alerting.Tests/FakeTelemetryRepository.cs) that behaves like a transaction |
 | `TNWatch.IntegrationTests` | 13 | Real schema/migrations, UTC handling, idempotency, the whole app via HTTP (simulator → DB → API) | Testcontainers starts a real PostgreSQL in Docker; `WebApplicationFactory` hosts the app in-process |
 
 **Time in tests:** all time-dependent code takes a `TimeProvider` instead of calling `DateTime.Now`. Tests use `FakeTimeProvider` and simply "advance" time, e.g. 31 minutes to test the offline rule, without waiting.
@@ -502,7 +505,6 @@ On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which th
 - **MQTT is off in the local Docker setup** (`MQTT_ENABLED=false` in `deploy/.env`); set the course credentials there to receive live data.
 - **HTTP only.** For the course server a TLS reverse proxy is required.
 - **No data retention job yet.** README §4 plans 90 days of raw data; old measurements are currently kept forever.
-- **The simulator uses synthetic curves**, not a replay of the real CSV.
 - **C4 SVGs** in `docs/architecture/c4/` must be re-exported from the updated `workspace.dsl`.
 
 ---
