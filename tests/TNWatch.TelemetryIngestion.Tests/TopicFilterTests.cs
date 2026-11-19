@@ -21,7 +21,7 @@ public class TopicFilterTests
             new IngestionChannel(Options.Create(ingestion)), new FakeTimeProvider(), NullLogger<MqttIngestionWorker>.Instance);
 
         Assert.Equal(
-            ["traffic-device/+/trafficnode/+/status", "traffic-device/+/battery/+", "extra/#"],
+            ["traffic-nodes/+/measurements", "traffic-device/+/trafficnode/+/status", "traffic-device/+/battery/+", "traffic-nodes/#", "extra/#"],
             worker.SubscriptionFilters);
         Assert.False(worker.IsConnected);
     }

@@ -33,5 +33,9 @@ public sealed class MqttOptions
     public TimeSpan ReconnectInterval { get; set; } = TimeSpan.FromSeconds(3);
 
     /// <summary>Additional raw subscription filters besides the ones derived from topic patterns.</summary>
-    public IList<string> ExtraSubscriptions { get; } = [];
+    /// <remarks>
+    /// Default <c>traffic-nodes/#</c>: also receives other sub-topics of the nodes, so battery events are
+    /// detected by their payload (<c>eventId</c>) even before their exact topic is known.
+    /// </remarks>
+    public IList<string> ExtraSubscriptions { get; } = ["traffic-nodes/#"];
 }

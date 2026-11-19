@@ -49,8 +49,23 @@ public sealed class ApiTests(PostgresFixture db) : IAsyncLifetime
         Assert.Equal(7, summary.GetProperty("total").GetInt32());
         Assert.Equal(1, summary.GetProperty("offline").GetInt32());
 
-        var node = await client.GetFromJsonAsync<JsonElement>("/api/nodes/SIM-002");
+        JsonElement node = default;
+        for (var i = 0; i < 50; i++)
+        {
+            node = await client.GetFromJsonAsync<JsonElement>("/api/nodes/SIM-002");
+            if (node.GetProperty("batterySerial").ValueKind == JsonValueKind.String)
+            {
+                break;
+            }
+
+            await Task.Delay(100);
+        }
+
         Assert.Equal("Normal", node.GetProperty("status").GetString());
+        Assert.Equal("SBAT-002-1", node.GetProperty("batterySerial").GetString()); // simulated installation event (F10)
+
+        var batteryEvents = await client.GetFromJsonAsync<JsonElement>("/api/nodes/SIM-002/battery-events");
+        Assert.Equal(1, batteryEvents.GetArrayLength());
 
         var csv = await client.GetStringAsync("/api/nodes/SIM-002/export.csv");
         Assert.StartsWith("node_id,measured_at_utc", csv, StringComparison.Ordinal);

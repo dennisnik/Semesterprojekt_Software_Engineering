@@ -123,7 +123,25 @@ public class TelemetryParserTests
     public void Matches_uses_configured_patterns()
     {
         Assert.True(_sut.Matches(TestData.RealTopic));
+        Assert.True(_sut.Matches(TestData.LiveTopic));
         Assert.False(_sut.Matches("traffic-device/x/battery/exchange"));
-        Assert.Single(_sut.Patterns);
+        Assert.False(_sut.Matches("traffic-nodes/TN0001/battery"));
+        Assert.Equal(2, _sut.Patterns.Count);
+    }
+
+    [Fact]
+    public void Parses_live_message_from_course_broker()
+    {
+        var r = _sut.Parse(TestData.Msg(TestData.LiveMsg, TestData.LiveTopic));
+
+        Assert.True(r.IsSuccess, r.Error);
+        var t = r.Value!;
+        Assert.Equal("TN0001", t.NodeId);
+        Assert.Null(t.Tenant);
+        Assert.Equal(12.004, t.VoltageV, 3);
+        Assert.Equal(0.05, t.CurrentA, 4);
+        Assert.Equal(16.25, t.TemperatureC);
+        Assert.Null(t.Latitude);                       // node has no GPS fix
+        Assert.Equal(TestData.ReceivedAt, t.MeasuredAt); // "time": null → receive time
     }
 }

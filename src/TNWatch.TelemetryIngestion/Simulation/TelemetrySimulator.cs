@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,6 +26,7 @@ public sealed class TelemetrySimulator : BackgroundService, ISimulatorControl
     private readonly IReadOnlyList<SimulatedNode> _nodes;
     private readonly Random _random;
     private readonly string _topicTemplate;
+    private readonly TimeZoneInfo _eventTimeZone;
     private volatile bool _running;
 
     public TelemetrySimulator(
@@ -46,6 +49,7 @@ public sealed class TelemetrySimulator : BackgroundService, ISimulatorControl
         _random = new Random(_options.Seed);
 #pragma warning restore CA5394
         _topicTemplate = ingestionOptions.Value.TelemetryTopicPatterns.FirstOrDefault() ?? "simulation/{nodeId}";
+        _eventTimeZone = TimeZoneInfo.FindSystemTimeZoneById(ingestionOptions.Value.EventTimeZone);
 
         var demo = SimulatedNode.DemoFleet();
         var nodes = demo.Take(_options.NodeCount).ToList();
@@ -86,7 +90,10 @@ public sealed class TelemetrySimulator : BackgroundService, ISimulatorControl
         await _notifier.PublishFleetResetAsync();
     }
 
-    /// <summary>Emits one measurement per node. Public for tests.</summary>
+    /// <summary>
+    /// Emits one measurement per node, plus battery events (F10): the initial installation after a node's
+    /// first measurement, and an exchange when a discharging battery is empty. Public for tests.
+    /// </summary>
     public async Task TickAsync(CancellationToken ct)
     {
         var now = _time.GetUtcNow();
@@ -99,13 +106,64 @@ public sealed class TelemetrySimulator : BackgroundService, ISimulatorControl
                     // One message from 40 minutes ago → the node is immediately "Offline".
                     node.HasSentInitial = true;
                     await WriteAsync(node, now.AddMinutes(-40), node.NextSample(_random), now, ct);
+                    await AnnounceBatteryAsync(node, now, ct);
                 }
 
                 continue;
             }
 
+            if (node.ExchangeBatteryIfEmpty() is { } oldSerial)
+            {
+                _logger.LogInformation("Simulated battery exchange at {NodeId}: {Old} → {New}", node.Id, oldSerial, node.BatterySerial);
+                await WriteBatteryEventAsync(node, Guid.NewGuid(), oldSerial, now, ct);
+            }
+
             await WriteAsync(node, now, node.NextSample(_random), now, ct);
+            await AnnounceBatteryAsync(node, now, ct);
         }
+    }
+
+    /// <summary>
+    /// Builds a battery exchange event in the format of data/exchange.example.json
+    /// (local date/time without offset, interpreted in <c>Ingestion:EventTimeZone</c>).
+    /// </summary>
+    public static string BuildExchangePayload(SimulatedNode node, Guid eventId, string? oldSerial, DateTimeOffset occurredAt, TimeZoneInfo timeZone)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        var local = TimeZoneInfo.ConvertTime(occurredAt, timeZone);
+        return JsonSerializer.Serialize(new
+        {
+            eventId,
+            date = local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            time = local.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture),
+            newBat = node.BatterySerial,
+            oldBat = oldSerial,
+            trafficNode = node.Id,
+            position = new { latitude = node.Latitude, longitude = node.Longitude, accuracy = 5 },
+        });
+    }
+
+    /// <summary>Stable event ID for the initial installation, so restarting the simulator creates no duplicates.</summary>
+    public static Guid InitialInstallationEventId(string nodeId) =>
+        new(SHA256.HashData(Encoding.UTF8.GetBytes($"tnwatch-simulator-battery-{nodeId}")).AsSpan(0, 16));
+
+    private async Task AnnounceBatteryAsync(SimulatedNode node, DateTimeOffset now, CancellationToken ct)
+    {
+        // Sent after the node's first measurement, so the node exists when the event is processed (single consumer, FIFO).
+        if (node.HasAnnouncedBattery)
+        {
+            return;
+        }
+
+        node.HasAnnouncedBattery = true;
+        await WriteBatteryEventAsync(node, InitialInstallationEventId(node.Id), null, now, ct);
+    }
+
+    private ValueTask WriteBatteryEventAsync(SimulatedNode node, Guid eventId, string? oldSerial, DateTimeOffset now, CancellationToken ct)
+    {
+        var topic = $"simulation/{_options.Tenant}/battery/{node.Id}";
+        var payload = Encoding.UTF8.GetBytes(BuildExchangePayload(node, eventId, oldSerial, now, _eventTimeZone));
+        return _channel.Writer.WriteAsync(new RawMessage(topic, payload, now, TelemetrySource.Simulator), ct);
     }
 
     /// <summary>Builds a payload in the format of data/sample_msg.json (mV, mA).</summary>

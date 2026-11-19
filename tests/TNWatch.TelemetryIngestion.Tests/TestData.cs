@@ -6,6 +6,13 @@ namespace TNWatch.TelemetryIngestion.Tests;
 internal static class TestData
 {
     public const string RealTopic = "traffic-device/dieringer-stark/trafficnode/TSN-002/status";
+
+    /// <summary>Live topic and payload captured on the course broker on 19.11.2026.</summary>
+    public const string LiveTopic = "traffic-nodes/TN0001/measurements";
+
+    public const string LiveMsg = """
+        {"current_mA":50.00,"voltage_mV":12003.75,"temperature_C":16.25,"lat":null,"lon":null,"altitude_m":null,"satellites":null,"time":null}
+        """;
     public static readonly DateTimeOffset ReceivedAt = new(2026, 11, 12, 9, 0, 0, TimeSpan.Zero);
 
     public static RawMessage Msg(string json, string topic = RealTopic) =>

@@ -28,6 +28,38 @@ public sealed class SimulatedNode(string id, double latitude, double longitude, 
 
     public bool HasSentInitial { get; set; }
 
+    /// <summary>Voltage at which a discharging node gets a new battery (simulated service visit).</summary>
+    public const double ExchangeVoltage = 11.0;
+
+    /// <summary>Voltage of a freshly installed battery.</summary>
+    public const double FreshBatteryVoltage = 12.85;
+
+    /// <summary>Serial number of the installed (simulated) battery, e.g. <c>SBAT-004-1</c>.</summary>
+    public string BatterySerial => $"SBAT-{Id[^3..]}-{BatteryGeneration}";
+
+    /// <summary>1 for the initially installed battery, incremented with every exchange.</summary>
+    public int BatteryGeneration { get; private set; } = 1;
+
+    /// <summary>True once the initial installation event was emitted (in this process).</summary>
+    public bool HasAnnouncedBattery { get; set; }
+
+    /// <summary>
+    /// A discharging node whose battery reached <see cref="ExchangeVoltage"/> gets a new one.
+    /// Returns the replaced serial, or <c>null</c> if no exchange happened.
+    /// </summary>
+    public string? ExchangeBatteryIfEmpty()
+    {
+        if (Profile != SimulationProfile.Discharging || BaseVoltage > ExchangeVoltage)
+        {
+            return null;
+        }
+
+        var old = BatterySerial;
+        BatteryGeneration++;
+        BaseVoltage = FreshBatteryVoltage;
+        return old;
+    }
+
     /// <summary>Advances one tick and returns (voltage, current) for this measurement.</summary>
     public (double Voltage, double Current) NextSample(Random random)
     {
@@ -35,7 +67,7 @@ public sealed class SimulatedNode(string id, double latitude, double longitude, 
 
         if (Profile == SimulationProfile.Discharging)
         {
-            BaseVoltage = Math.Max(10.8, BaseVoltage - 0.004);
+            BaseVoltage = Math.Max(ExchangeVoltage, BaseVoltage - 0.004);
         }
 
 #pragma warning disable CA5394 // Random is fine for simulated sensor noise.

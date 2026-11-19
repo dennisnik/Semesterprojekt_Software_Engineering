@@ -9,7 +9,16 @@ public sealed class IngestionOptions
     /// Telemetry topic patterns. Placeholders: <c>{tenant}</c>, <c>{nodeId}</c>, and <c>{*}</c> (any single level).
     /// Each pattern is also used to derive the MQTT subscription filter (placeholders → <c>+</c>).
     /// </summary>
-    public IList<string> TelemetryTopicPatterns { get; } = ["traffic-device/{tenant}/trafficnode/{nodeId}/status"];
+    /// <remarks>
+    /// Live format on the course broker (seen 19.11.2026): <c>traffic-nodes/TN0001/measurements</c>.
+    /// The second pattern is the format of the older export in <c>data/traffic_devices_signals.csv</c>.
+    /// The first pattern is also used by the simulator for its topics.
+    /// </remarks>
+    public IList<string> TelemetryTopicPatterns { get; } =
+    [
+        "traffic-nodes/{nodeId}/measurements",
+        "traffic-device/{tenant}/trafficnode/{nodeId}/status",
+    ];
 
     /// <summary>Battery event topic patterns (exchange/discard). Same placeholder syntax.</summary>
     public IList<string> BatteryEventTopicPatterns { get; } = [];
