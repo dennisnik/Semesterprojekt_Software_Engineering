@@ -3,7 +3,6 @@
 @using TNWatch.Domain.Routing
 @inject IFleetQueries Queries
 @inject IJSRuntime JS
-@inject StaticAssets Assets
 @inject TimeProvider Time
 @inject StatusEvaluator Evaluator
 @implements IAsyncDisposable
@@ -182,7 +181,7 @@
         }
 
         _renderChart = false;
-        _charts ??= await JS.InvokeAsync<IJSObjectReference>("import", "./" + Assets.Url("js/charts.js"));
+        _charts ??= await JS.InvokeAsync<IJSObjectReference>("import", "./" + Assets["js/charts.js"]);
         var data = _points.Select(p => new { t = p.MeasuredAt.ToUnixTimeMilliseconds(), v = p.VoltageV, c = p.CurrentA });
         await _charts.InvokeVoidAsync("render", _canvas, data, new { normal = Evaluator.Rules.NormalMinVoltage, warning = Evaluator.Rules.WarningMinVoltage });
     }

@@ -8,8 +8,7 @@ namespace TNWatch.IntegrationTests;
 /// <summary>One PostgreSQL 16 container per test collection; schema created via the real EF migrations.</summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithDatabase("tnwatch")
         .WithUsername("tnwatch")
         .WithPassword("integration-test")

@@ -74,7 +74,7 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__TnWatch: Host=db;Port=5432;Database=tnwatch;Username=tnwatch;Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__TnWatch: Host=db;Port=5432;Database=tnwatch;Username=tnwatch;Password=${POSTGRES_PASSWORD};Gss Encryption Mode=Disable
       Mqtt__Enabled: ${MQTT_ENABLED:-true}
       Mqtt__Username: ${MQTT_USERNAME:-}
       Mqtt__Password: ${MQTT_PASSWORD:-}

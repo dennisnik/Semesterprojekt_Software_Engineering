@@ -27,7 +27,7 @@ workspace "TN-Watch" "C4-Architekturmodell für das TN-Watch IoT-Flottenüberwac
             database = container "PostgreSQL Datenbank" "Speichert Gerätestammdaten, Batterie-Ereignisse, Zeitreihen-Messdaten und Statuswechsel (Schemata: core, telemetry, alerting) sowie die Keycloak-DB." "PostgreSQL 16" "Database"
 
             // Container 3: Web Application (Modularer Monolith)
-            webApp = container "TN-Watch Webanwendung" "Modularer Monolith: Web-Dashboard, REST-API, MQTT-Ingestion, In-Process-Simulator und regelbasierte Zustandsbewertung." "ASP.NET Core 8 / Blazor Server" "App" {
+            webApp = container "TN-Watch Webanwendung" "Modularer Monolith: Web-Dashboard, REST-API, MQTT-Ingestion, In-Process-Simulator und regelbasierte Zustandsbewertung." "ASP.NET Core 10 / Blazor Server" "App" {
                 
                 // ========================================================
                 // C4 LEVEL 3: KOMPONENTEN INNERHALB DER WEB APPLICATION
