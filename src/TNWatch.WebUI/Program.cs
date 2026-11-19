@@ -33,6 +33,7 @@ builder.Services
 // Web UI + realtime (ADR-02, ADR-05)
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddScoped<FleetViewModel>();
+builder.Services.AddSingleton<TNWatch.WebUI.Ui.StaticAssets>();
 builder.Services.Configure<TNWatch.WebUI.Ui.MapOptions>(builder.Configuration.GetSection(TNWatch.WebUI.Ui.MapOptions.SectionName));
 builder.Services.AddSignalR()
     .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));

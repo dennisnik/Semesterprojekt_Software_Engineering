@@ -1,3 +1,5 @@
+@inject TNWatch.WebUI.Ui.StaticAssets Assets
+
 <!DOCTYPE html>
 <html lang="de">
 
@@ -8,7 +10,7 @@
     <title>TN-Watch</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="lib/leaflet/leaflet.css" />
-    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="@Assets.Url("app.css")" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 

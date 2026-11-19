@@ -327,11 +327,15 @@ button, input { font: inherit; color: inherit; }
 .search .icon { position: absolute; right: 10px; top: 9px; color: var(--ink-muted); }
 
 .table-wrap { flex: 1; overflow: auto; min-height: 0; }
-.fleet-table { width: 100%; border-collapse: collapse; }
+/* "separate" (not "collapse"): with collapsed borders the header lines belong to the table and
+   scroll away under the sticky header, leaving a see-through gap. */
+.fleet-table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .fleet-table th {
   position: sticky; top: 0; background: #fff; z-index: 1;
   text-align: left; font-weight: 500; padding: 8px 12px;
-  border-top: 1.5px solid var(--line); border-bottom: 1.5px solid var(--line);
+  /* Lines as inset shadows: borders on sticky cells are not painted reliably in every browser while scrolling. */
+  border: 0;
+  box-shadow: inset 0 1.5px 0 var(--line), inset 0 -1.5px 0 var(--line);
 }
 .fleet-table td { padding: 12px; border-bottom: 1.5px solid var(--line); vertical-align: middle; }
 .fleet-table .num { text-align: right; font-variant-numeric: tabular-nums; }

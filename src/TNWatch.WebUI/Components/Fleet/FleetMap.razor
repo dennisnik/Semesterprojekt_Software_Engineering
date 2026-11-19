@@ -1,5 +1,6 @@
 @* Full-screen Leaflet map with status-coloured pins (F04). In route mode, pins show selection bubbles (Mockup 1). *@
 @inject IJSRuntime JS
+@inject StaticAssets Assets
 @implements IAsyncDisposable
 
 <div class="fleet-map" @ref="_element" aria-label="Karte der TrafficNodes"></div>
@@ -28,7 +29,7 @@
     {
         if (firstRender)
         {
-            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/fleetMap.js");
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./" + Assets.Url("js/fleetMap.js"));
             _self = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync("init", _element, _self, Options);
         }
