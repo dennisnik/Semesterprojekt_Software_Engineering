@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TNWatch.Domain.Assignments;
 using TNWatch.Domain.Battery;
 using TNWatch.Domain.Fleet;
 
@@ -8,6 +9,7 @@ namespace TNWatch.Alerting;
 public sealed class BatteryEventProcessor(
     ITelemetryRepository repository,
     IFleetNotifier notifier,
+    IAssignmentService assignments,
     ILogger<BatteryEventProcessor> logger) : IBatteryLifecycleHandler
 {
     public async Task HandleAsync(BatteryEvent batteryEvent, CancellationToken ct)
@@ -35,6 +37,12 @@ public sealed class BatteryEventProcessor(
         if (node is not null)
         {
             await notifier.PublishNodeUpdatedAsync(node.ToSnapshot());
+        }
+
+        // F11: the job is done once the battery was exchanged → the node is free again.
+        if (batteryEvent is { Type: BatteryEventType.Exchange, NodeId: not null })
+        {
+            await assignments.ReleaseAfterBatteryExchangeAsync(batteryEvent.NodeId, ct);
         }
     }
 }

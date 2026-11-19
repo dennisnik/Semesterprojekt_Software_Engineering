@@ -4,6 +4,8 @@ const instances = new WeakMap();
 const tickFormat = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 const fullFormat = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
 const num = (v, d) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+// Axis ticks: only as many decimals as needed (small currents like 0,047 A need 3).
+const tick = v => v.toLocaleString('de-DE', { maximumFractionDigits: 3 });
 
 // points: [{ t: epochMs, v: volt, c: ampere }], thresholds: { normal: 12.4, warning: 11.8 }
 export function render(canvas, points, thresholds) {
@@ -33,8 +35,8 @@ export function render(canvas, points, thresholds) {
       interaction: { mode: 'nearest', axis: 'x', intersect: false },
       scales: {
         x: { type: 'linear', min: first, max: last, ticks: { maxTicksLimit: 6, callback: v => tickFormat.format(new Date(v)) }, grid: { color: '#eceef1' } },
-        yV: { position: 'left', title: { display: true, text: 'Spannung (V)' }, ticks: { callback: v => num(v, 1) }, grid: { color: '#eceef1' } },
-        yA: { position: 'right', title: { display: true, text: 'Strom (A)' }, ticks: { callback: v => num(v, 2) }, grid: { drawOnChartArea: false } },
+        yV: { position: 'left', title: { display: true, text: 'Spannung (V)' }, ticks: { callback: tick }, grid: { color: '#eceef1' } },
+        yA: { position: 'right', title: { display: true, text: 'Strom (A)' }, ticks: { callback: tick }, grid: { drawOnChartArea: false } },
       },
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 14, usePointStyle: false } },
@@ -42,7 +44,7 @@ export function render(canvas, points, thresholds) {
           filter: item => item.datasetIndex < 2,
           callbacks: {
             title: items => items.length ? fullFormat.format(new Date(items[0].parsed.x)) : '',
-            label: item => item.datasetIndex === 0 ? ` ${num(item.parsed.y, 2)} V` : ` ${num(item.parsed.y, 2)} A`,
+            label: item => item.datasetIndex === 0 ? ` ${num(item.parsed.y, 2)} V` : ` ${num(item.parsed.y, 3)} A`,
           },
         },
       },

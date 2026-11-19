@@ -66,6 +66,7 @@ In diesem Projekt entsteht zunächst ein **Minimal Viable Product (MVP)**, das d
   - Benutzer- und Rechteverwaltung
 - **Batteriewechsel-Historie:** Empfang von Batterie-Tausch- und Entsorgungsereignissen per MQTT.
 - **Simulator:** In-Process-Simulator für Demo und Lasttests, im Dashboard schaltbar.
+- **Zuständigkeiten:** Nodes übernehmen/zuweisen, live für alle Benutzer sichtbar.
 
 ### 🟡 Geplante Erweiterungen (Post-MVP)
 - Automatischer Benachrichtigungsdienst (E-Mail) bei Eintritt eines kritischen Zustands.
@@ -120,6 +121,7 @@ Die Anforderungen sind nach MoSCoW priorisiert (*Must-Have*, *Should-Have*, *Cou
 | **F07** | **Routenplanung via Google Maps** | Automatische Routenplanung durch anklicken der kritischen Nodes und weiterleitung an Google Maps | Servicetechniker | 🟠 Should-Have |
 | **F08** | **CSV-Datenexport** | Export historischer Messreihen eines Geräts zur weiteren wissenschaftlichen oder statistischen Auswertung. | Aufgabenstellung | 🟡 Could-Have |
 | **F09** | **Benachrichtigung** | Auslösen einer Benachrichtigung beim Eintritt des Status „Kritisch“. | Servicetechniker / Disponent | 🟡 Could-Have |
+| **F11** | **Zuständigkeit für Nodes** | Servicetechniker übernehmen Nodes selbst („Übernehmen“, auch automatisch beim Routenstart), der Betriebsleiter weist Nodes Personen zu. Die zuständige Person ist für alle Benutzer live an Pin, Popup, Detailansicht und Tabelle sichtbar. Nach einem Batteriewechsel wird die Node automatisch wieder freigegeben. | Servicetechniker / Betriebsleiter (gleichzeitiges Arbeiten) | 🟠 Should-Have |
 | **F10** | **Batteriewechsel-Historie** | Empfang von Batterie-Tausch- und Entsorgungsereignissen per MQTT (Format: `data/exchange.example.json`, `data/discard.example.json`), Anzeige der aktuell verbauten Batterie und der Wechselhistorie in der Detailansicht. Doppelt zugestellte Ereignisse werden über die `eventId` erkannt. | Servicetechniker / Betriebsleiter | 🟠 Should-Have |
 
 ## 🧱 6. Nicht-funktionale Anforderungen

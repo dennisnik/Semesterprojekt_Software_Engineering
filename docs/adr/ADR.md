@@ -216,6 +216,11 @@ Wir implementieren die Authentifizierung über **OpenID Connect (OIDC)** auf Bas
 - **Benutzer- und Rechteverwaltung** erfolgt in der Keycloak-Admin-Konsole des Realms. Der Betriebsleiter hat dafür die Rollen `realm-management/manage-users`; das Menü der App verlinkt dorthin.
 - Für lokale Entwicklung ohne Keycloak gibt es `Auth:Mode=Development` (fester Demo-Benutzer). Dieser Modus ist **nur** in der Development-Umgebung zulässig, sonst bricht der Start ab.
 
+### Nachtrag (19.11.2026): Service-Account für die Benutzerliste (F11)
+- Für das Zuweisen von Nodes braucht die App die Liste der Benutzer mit den Rollen `Techniker`/`Betriebsleiter`. Sie liest sie über die **Keycloak Admin REST API** mit dem Service-Account ihres eigenen Clients `tnwatch-web` (Client-Credentials-Flow, nur Leserechte: `view-users`, `query-users`, `view-realm`). Die Liste wird 5 Minuten zwischengespeichert.
+- Alternative wäre eine eigene Benutzertabelle in TN-Watch gewesen. Verworfen, weil Keycloak die einzige Quelle für Benutzer und Rollen bleiben soll (keine doppelte Pflege).
+- Bestehende Installationen erhalten die Rechte über `deploy/keycloak/enable-user-directory.sh`, neue über `tnwatch-realm.json`.
+
 ---
 
 ## ADR-07: Interne Datenverarbeitung (Event-Driven Architektur)

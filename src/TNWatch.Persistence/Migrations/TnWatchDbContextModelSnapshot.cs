@@ -17,7 +17,7 @@ namespace TNWatch.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -111,6 +111,50 @@ namespace TNWatch.Persistence.Migrations
                         .HasDatabaseName("ix_traffic_nodes_status");
 
                     b.ToTable("traffic_nodes", "core");
+                });
+
+            modelBuilder.Entity("TNWatch.Persistence.Entities.AssignmentEntity", b =>
+                {
+                    b.Property<string>("NodeId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("node_id");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<string>("AssignedByDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("assigned_by_display_name");
+
+                    b.Property<string>("AssignedByUserName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("assigned_by_user_name");
+
+                    b.Property<string>("AssigneeDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("assignee_display_name");
+
+                    b.Property<string>("AssigneeUserName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("assignee_user_name");
+
+                    b.HasKey("NodeId")
+                        .HasName("pk_node_assignments");
+
+                    b.HasIndex("AssigneeUserName")
+                        .HasDatabaseName("ix_node_assignments_assignee_user_name");
+
+                    b.ToTable("node_assignments", "core");
                 });
 
             modelBuilder.Entity("TNWatch.Persistence.Entities.BatteryEventEntity", b =>
@@ -276,6 +320,16 @@ namespace TNWatch.Persistence.Migrations
                         .HasDatabaseName("ix_status_changes_node_id_occurred_at");
 
                     b.ToTable("status_changes", "alerting");
+                });
+
+            modelBuilder.Entity("TNWatch.Persistence.Entities.AssignmentEntity", b =>
+                {
+                    b.HasOne("TNWatch.Domain.Fleet.TrafficNode", null)
+                        .WithOne()
+                        .HasForeignKey("TNWatch.Persistence.Entities.AssignmentEntity", "NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_assignments_traffic_nodes_node_id");
                 });
 
             modelBuilder.Entity("TNWatch.Persistence.Entities.MeasurementEntity", b =>

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using TNWatch.Domain.Assignments;
 
 namespace TNWatch.WebUI.Auth;
 
@@ -26,10 +27,13 @@ public static class AuthSetup
 
             services.AddAuthentication(DevelopmentAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, DevelopmentAuthHandler>(DevelopmentAuthHandler.SchemeName, null);
+            services.AddSingleton<IUserDirectory, ConfiguredUserDirectory>();
         }
         else
         {
             AddOidc(services, options);
+            services.AddHttpClient(KeycloakUserDirectory.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+            services.AddSingleton<IUserDirectory, KeycloakUserDirectory>();
         }
 
         services.AddAuthorizationBuilder()

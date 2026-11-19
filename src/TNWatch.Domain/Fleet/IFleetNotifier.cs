@@ -1,3 +1,4 @@
+using TNWatch.Domain.Assignments;
 using TNWatch.Domain.Status;
 
 namespace TNWatch.Domain.Fleet;
@@ -17,10 +18,15 @@ public interface IFleetNotifier
 
     event Func<Task>? FleetReset;
 
+    /// <summary>A node was claimed, assigned or released (F11).</summary>
+    event Func<AssignmentChange, Task>? AssignmentChanged;
+
     Task PublishNodeUpdatedAsync(NodeSnapshot snapshot);
 
     Task PublishStatusChangedAsync(StatusChange change);
 
     /// <summary>The set of visible nodes changed (e.g. simulator switched off).</summary>
     Task PublishFleetResetAsync();
+
+    Task PublishAssignmentChangedAsync(AssignmentChange change);
 }

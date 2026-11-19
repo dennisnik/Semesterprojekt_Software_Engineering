@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using TNWatch.Domain.Assignments;
 using TNWatch.Domain.Fleet;
 
 namespace TNWatch.Persistence;
@@ -16,6 +17,7 @@ public static class PersistenceServiceCollectionExtensions
             .UseSnakeCaseNamingConvention());
         services.AddScoped<ITelemetryRepository, TelemetryRepository>();
         services.AddSingleton<IFleetQueries, FleetQueries>();
+        services.AddSingleton<IAssignmentStore, AssignmentStore>();
         return services;
     }
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using TNWatch.Alerting;
+using TNWatch.Domain.Assignments;
 using TNWatch.Domain.Battery;
 using TNWatch.Domain.Diagnostics;
 using TNWatch.Domain.Fleet;
@@ -39,6 +40,9 @@ public sealed class PersistenceTests(PostgresFixture db) : IAsyncLifetime
     }
 
     private static IFleetQueries Queries(ServiceProvider provider) => provider.GetRequiredService<IFleetQueries>();
+
+    private AssignmentService Assignments(ServiceProvider provider) =>
+        new(provider.GetRequiredService<IAssignmentStore>(), Queries(provider), new FleetNotifier(), _time, NullLogger<AssignmentService>.Instance);
 
     [Fact]
     public async Task Telemetry_is_persisted_with_snapshot_and_status_history()
@@ -81,6 +85,11 @@ public sealed class PersistenceTests(PostgresFixture db) : IAsyncLifetime
     public async Task Battery_events_with_local_offset_are_stored_as_utc_and_idempotent()
     {
         await ProcessAsync(Reading("TN0001", 12.6));
+        await using (var setup = db.CreateServices())
+        {
+            await Assignments(setup).ClaimAsync("TN0001", new UserRef("kevin", "Kevin"), false, CancellationToken.None);
+        }
+
         var occurred = new DateTimeOffset(2026, 11, 5, 11, 30, 0, TimeSpan.FromHours(1));
         var exchange = new BatteryEvent(Guid.NewGuid(), BatteryEventType.Exchange, occurred, "TN0001", "BAT0001", "BAT0002", 52.52, 13.405, 8);
 
@@ -88,7 +97,7 @@ public sealed class PersistenceTests(PostgresFixture db) : IAsyncLifetime
         {
             await using var provider = db.CreateServices();
             await using var scope = provider.CreateAsyncScope();
-            await new BatteryEventProcessor(scope.ServiceProvider.GetRequiredService<ITelemetryRepository>(), new FleetNotifier(), NullLogger<BatteryEventProcessor>.Instance)
+            await new BatteryEventProcessor(scope.ServiceProvider.GetRequiredService<ITelemetryRepository>(), new FleetNotifier(), Assignments(provider), NullLogger<BatteryEventProcessor>.Instance)
                 .HandleAsync(exchange, CancellationToken.None);
         }
 
@@ -97,6 +106,44 @@ public sealed class PersistenceTests(PostgresFixture db) : IAsyncLifetime
         var stored = Assert.Single(events);
         Assert.Equal(occurred.ToUniversalTime(), stored.OccurredAt);
         Assert.Equal("BAT0001", (await Queries(p).GetNodeAsync("TN0001", CancellationToken.None))!.BatterySerial);
+        Assert.Empty(await Assignments(p).GetAllAsync(CancellationToken.None)); // F11: released after the exchange
+    }
+
+    [Fact]
+    public async Task Assignments_are_persisted_updated_and_removed_with_their_node()
+    {
+        await ProcessAsync(Reading("TN0001", 12.6));
+        await ProcessAsync(Reading("TN0002", 12.6));
+        var kevin = new UserRef("kevin", "Kevin");
+        var markus = new UserRef("markus", "Markus");
+
+        await using (var provider = db.CreateServices())
+        {
+            var service = Assignments(provider);
+            Assert.Equal(AssignmentOutcome.Ok, (await service.ClaimAsync("TN0001", kevin, false, CancellationToken.None)).Outcome);
+            Assert.Equal(AssignmentOutcome.Ok, (await service.AssignAsync("TN0002", kevin, markus, true, CancellationToken.None)).Outcome);
+            Assert.Equal(AssignmentOutcome.Ok, (await service.AssignAsync("TN0002", new UserRef("anja", "Anja"), markus, true, CancellationToken.None)).Outcome);
+        }
+
+        await using var p = db.CreateServices();
+        var store = p.GetRequiredService<IAssignmentStore>();
+        var all = await store.GetAllAsync(CancellationToken.None);
+        Assert.Equal(["TN0001", "TN0002"], all.Select(a => a.NodeId));
+        var second = await store.GetAsync("TN0002", CancellationToken.None);
+        Assert.Equal("anja", second!.Assignee.UserName);
+        Assert.Equal("Markus", second.AssignedBy.DisplayName);
+        Assert.Equal(_time.GetUtcNow(), second.AssignedAt);
+
+        // Deleting a node (e.g. clean-up of simulated nodes) removes its assignment (FK cascade).
+        var factory = p.GetRequiredService<IDbContextFactory<TnWatchDbContext>>();
+        await using (var ctx = await factory.CreateDbContextAsync())
+        {
+            await ctx.Nodes.Where(n => n.Id == "TN0002").ExecuteDeleteAsync();
+        }
+
+        Assert.Equal(["TN0001"], (await store.GetAllAsync(CancellationToken.None)).Select(a => a.NodeId));
+        await store.RemoveAsync("TN0001", CancellationToken.None);
+        Assert.Null(await store.GetAsync("TN0001", CancellationToken.None));
     }
 
     [Fact]
@@ -130,6 +177,6 @@ public sealed class PersistenceTests(PostgresFixture db) : IAsyncLifetime
             .SqlQueryRaw<string>("SELECT table_schema || '.' || table_name AS \"Value\" FROM information_schema.tables WHERE table_schema IN ('core','telemetry','alerting') ORDER BY 1")
             .ToListAsync();
 
-        Assert.Equal(["alerting.status_changes", "core.battery_events", "core.data_protection_keys", "core.traffic_nodes", "telemetry.measurements"], tables);
+        Assert.Equal(["alerting.status_changes", "core.battery_events", "core.data_protection_keys", "core.node_assignments", "core.traffic_nodes", "telemetry.measurements"], tables);
     }
 }

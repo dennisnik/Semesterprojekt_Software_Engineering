@@ -1,0 +1,26 @@
+@* Who is responsible for a node (F11): initials badge + name, highlighted when it is the current user. *@
+@using TNWatch.Domain.Assignments
+
+@if (Assignment is null)
+{
+    <span class="assignee is-free">–</span>
+}
+else
+{
+    var mine = Assignment.Assignee.UserName.Equals(CurrentUserName, StringComparison.OrdinalIgnoreCase);
+    <span class="assignee @(mine ? "is-mine" : "")" title="@Title(Assignment)">
+        <span class="assignee-badge" aria-hidden="true">@Assignment.Assignee.Initials</span>
+        @(mine ? "du" : Assignment.Assignee.DisplayName)
+    </span>
+}
+
+@code {
+    [Parameter] public NodeAssignment? Assignment { get; set; }
+
+    [Parameter] public string CurrentUserName { get; set; } = string.Empty;
+
+    private static string Title(NodeAssignment a) =>
+        a.IsSelfClaimed
+            ? $"Übernommen von {a.Assignee.DisplayName} am {Format.DateTime(a.AssignedAt)}"
+            : $"{a.AssignedBy.DisplayName} hat {a.Assignee.DisplayName} am {Format.DateTime(a.AssignedAt)} zugewiesen";
+}

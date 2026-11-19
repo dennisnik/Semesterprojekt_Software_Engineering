@@ -24,6 +24,11 @@
 
     [Parameter] public EventCallback<string> OnNodeClick { get; set; }
 
+    /// <summary>F11: who is responsible for a node (initials badge on the pin).</summary>
+    [Parameter] public Func<string?, TNWatch.Domain.Assignments.NodeAssignment?> AssignmentOf { get; set; } = _ => null;
+
+    [Parameter] public string CurrentUserName { get; set; } = string.Empty;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -53,6 +58,8 @@
         var selected = RouteSelection.ToHashSet(StringComparer.Ordinal);
         var payload = Nodes.Select(n => new
         {
+            assignee = AssignmentOf(n.Id)?.Assignee.Initials,
+            mine = AssignmentOf(n.Id)?.Assignee.UserName.Equals(CurrentUserName, StringComparison.OrdinalIgnoreCase) ?? false,
             id = n.Id,
             lat = n.Latitude,
             lon = n.Longitude,

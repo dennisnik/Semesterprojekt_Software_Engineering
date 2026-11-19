@@ -1,3 +1,5 @@
+using TNWatch.Domain.Assignments;
+
 namespace TNWatch.Domain.Fleet;
 
 /// <summary>Thread-safe default implementation of <see cref="IFleetNotifier"/>. Subscriber failures are isolated.</summary>
@@ -9,11 +11,15 @@ public sealed class FleetNotifier : IFleetNotifier
 
     public event Func<Task>? FleetReset;
 
+    public event Func<AssignmentChange, Task>? AssignmentChanged;
+
     public Task PublishNodeUpdatedAsync(NodeSnapshot snapshot) => InvokeAll(NodeUpdated, h => h(snapshot));
 
     public Task PublishStatusChangedAsync(StatusChange change) => InvokeAll(StatusChanged, h => h(change));
 
     public Task PublishFleetResetAsync() => InvokeAll(FleetReset, h => h());
+
+    public Task PublishAssignmentChangedAsync(AssignmentChange change) => InvokeAll(AssignmentChanged, h => h(change));
 
     private static async Task InvokeAll<THandler>(THandler? multicast, Func<THandler, Task> invoke)
         where THandler : Delegate
