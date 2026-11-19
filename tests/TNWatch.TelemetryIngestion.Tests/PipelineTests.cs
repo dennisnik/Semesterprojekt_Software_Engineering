@@ -18,17 +18,30 @@ public class PipelineTests
 
         public List<BatteryEvent> Battery { get; } = [];
 
-        public bool Throw { get; set; }
+        /// <summary>The next N telemetry calls fail (deterministic, independent of timing).</summary>
+        public int FailuresRemaining { get; set; }
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        private int _calls;
 
         public Task HandleAsync(TelemetryReading reading, CancellationToken ct)
         {
-            if (Throw)
+            try
             {
-                throw new InvalidOperationException("db down");
-            }
+                if (FailuresRemaining > 0)
+                {
+                    FailuresRemaining--;
+                    throw new InvalidOperationException("db down");
+                }
 
-            Telemetry.Add(reading);
-            return Task.CompletedTask;
+                Telemetry.Add(reading);
+                return Task.CompletedTask;
+            }
+            finally
+            {
+                Interlocked.Increment(ref _calls);
+            }
         }
 
         public Task HandleAsync(BatteryEvent batteryEvent, CancellationToken ct)
@@ -90,15 +103,19 @@ public class PipelineTests
     [Fact]
     public async Task Background_loop_survives_handler_failures()
     {
-        _handlers.Throw = true;
+        _handlers.FailuresRemaining = 1;
         await _sut.StartAsync(CancellationToken.None);
-        await _channel.Writer.WriteAsync(TestData.Msg(TestData.SampleMsg));
-        await Task.Delay(50);
-        _handlers.Throw = false;
-        await _channel.Writer.WriteAsync(TestData.Msg(TestData.SampleMsg));
-        await Task.Delay(50);
+        await _channel.Writer.WriteAsync(TestData.Msg(TestData.SampleMsg)); // fails
+        await _channel.Writer.WriteAsync(TestData.Msg(TestData.SampleMsg)); // must still be processed
+
+        for (var i = 0; i < 100 && _handlers.Calls < 2; i++)
+        {
+            await Task.Delay(20);
+        }
+
         await _sut.StopAsync(CancellationToken.None);
 
+        Assert.Equal(2, _handlers.Calls);
         Assert.Single(_handlers.Telemetry);
     }
 }
