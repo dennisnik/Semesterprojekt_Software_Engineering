@@ -151,9 +151,15 @@ public class SimulatorTests
     {
         var sim = Create(start: true);
         await sim.StartAsync(CancellationToken.None);
-        await Task.Delay(50);
+        var received = new List<RawMessage>();
+        for (var i = 0; i < 250 && received.Count == 0; i++)
+        {
+            received.AddRange(Drain());
+            await Task.Delay(20); // poll instead of a fixed sleep: CI runners can be slow
+        }
+
         await sim.StopAsync(CancellationToken.None);
 
-        Assert.NotEmpty(Drain());
+        Assert.NotEmpty(received);
     }
 }

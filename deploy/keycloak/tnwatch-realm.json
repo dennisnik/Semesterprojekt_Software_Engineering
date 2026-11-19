@@ -28,7 +28,7 @@
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": false,
+      "serviceAccountsEnabled": true,
       "redirectUris": ["${TNWATCH_APP_URL}/*"],
       "webOrigins": ["${TNWATCH_APP_URL}"],
       "attributes": {
@@ -54,6 +54,12 @@
     }
   ],
   "users": [
+    {
+      "username": "service-account-tnwatch-web",
+      "enabled": true,
+      "serviceAccountClientId": "tnwatch-web",
+      "clientRoles": { "realm-management": ["view-users", "query-users", "view-realm"] }
+    },
     {
       "username": "markus",
       "firstName": "Markus",

@@ -1,6 +1,8 @@
 @page "/"
 @* Single-page map application composed from the three mockups. *@
+@using TNWatch.Domain.Assignments
 @inject FleetViewModel Fleet
+@inject IAssignmentService Assignments
 @inject Microsoft.Extensions.Options.IOptions<MapOptions> MapOptions
 @implements IDisposable
 
@@ -8,7 +10,8 @@
 
 <div class="app-shell">
     <FleetMap @ref="_map" Nodes="Fleet.Nodes" Version="Fleet.Version" RouteMode="_routeMode" RouteSelection="_route"
-              ActiveNodeId="@(_detailsNodeId ?? _popupNodeId)" Options="MapOptions.Value" OnNodeClick="OnNodeClick" />
+              ActiveNodeId="@(_detailsNodeId ?? _popupNodeId)" Options="MapOptions.Value" OnNodeClick="OnNodeClick"
+              AssignmentOf="Fleet.AssignmentOf" CurrentUserName="@_user.UserName" />
 
     <div class="overlay-left">
         <NavCard RouteMode="_routeMode" DashboardOpen="_dashboardOpen"
@@ -16,7 +19,9 @@
         @if (_routeMode)
         {
             <RoutePlannerPanel Nodes="RouteNodes" CriticalAvailable="Fleet.Nodes.Any(n => n.Status == NodeStatus.Critical && !_route.Contains(n.Id))"
-                               OnRemove="RemoveFromRoute" OnClear="() => _route.Clear()" OnSelectCritical="SelectCritical" />
+                               AssignmentOf="Fleet.AssignmentOf" CurrentUserName="@_user.UserName"
+                               OnRemove="RemoveFromRoute" OnClear="() => _route.Clear()" OnSelectCritical="SelectCritical"
+                               OnStartRoute="ClaimRouteAsync" />
         }
     </div>
 
@@ -24,26 +29,44 @@
     {
         <DashboardPanel Nodes="Fleet.Nodes" Summary="Fleet.Summary" SimulatorRunning="Fleet.SimulatorRunning"
                         CanControlSimulator="_isManager" OnSetSimulator="Fleet.SetSimulatorAsync"
+                        AssignmentOf="Fleet.AssignmentOf" CurrentUserName="@_user.UserName"
                         OnDetails="OpenDetails" OnShowOnMap="ShowOnMap" OnClose="() => _dashboardOpen = false" />
     }
 
     @if (Fleet.Find(_detailsNodeId) is { } detailsNode)
     {
-        <NodeDetails Node="detailsNode" OnClose="() => _detailsNodeId = null" />
+        <NodeDetails Node="detailsNode" Assignment="Fleet.AssignmentOf(detailsNode.Id)" CurrentUser="_user" IsManager="_isManager"
+                     OnClaim="() => ClaimAsync(detailsNode.Id)" OnRelease="() => ReleaseAsync(detailsNode.Id)"
+                     OnAssign="user => AssignAsync(detailsNode.Id, user)" OnClose="() => _detailsNodeId = null" />
     }
     else if (_map is not null && Fleet.Find(_popupNodeId) is { } popupNode)
     {
-        <NodePopup Node="popupNode" Map="_map" OnDetails="() => OpenDetails(popupNode.Id)" OnClose="() => _popupNodeId = null" />
+        <NodePopup Node="popupNode" Map="_map" Assignment="Fleet.AssignmentOf(popupNode.Id)" CurrentUser="_user" IsManager="_isManager"
+                   OnClaim="() => ClaimAsync(popupNode.Id)" OnRelease="() => ReleaseAsync(popupNode.Id)"
+                   OnDetails="() => OpenDetails(popupNode.Id)" OnClose="() => _popupNodeId = null" />
+    }
+
+    @if (_notice is not null)
+    {
+        <div class="notice" role="status" aria-live="polite">
+            <span>@_notice</span>
+            <button type="button" class="icon-btn small" aria-label="Hinweis schließen" @onclick="() => _notice = null"><Icon Name="close" /></button>
+        </div>
     }
 </div>
 
 @code {
+    private static readonly TimeSpan NoticeDuration = TimeSpan.FromSeconds(6);
+
     private FleetMap? _map;
     private bool _routeMode;
     private bool _dashboardOpen;
     private bool _isManager;
+    private UserRef _user = new("unbekannt", "unbekannt");
     private string? _popupNodeId;
     private string? _detailsNodeId;
+    private string? _notice;
+    private CancellationTokenSource? _noticeTimer;
     private readonly List<string> _route = [];
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -54,7 +77,9 @@
     {
         if (AuthState is not null)
         {
-            _isManager = (await AuthState).User.IsInRole(Roles.Betriebsleiter);
+            var principal = (await AuthState).User;
+            _user = CurrentUser.From(principal);
+            _isManager = CurrentUser.IsManager(principal);
         }
 
         Fleet.Changed += OnFleetChanged;
@@ -137,5 +162,74 @@
         }
     }
 
-    public void Dispose() => Fleet.Changed -= OnFleetChanged;
+    // ---- F11: claim / release / assign ----
+
+    private async Task ClaimAsync(string nodeId) =>
+        Report(nodeId, await Assignments.ClaimAsync(nodeId, _user, _isManager, CancellationToken.None), "übernommen");
+
+    private async Task ReleaseAsync(string nodeId) =>
+        Report(nodeId, await Assignments.ReleaseAsync(nodeId, _user, _isManager, CancellationToken.None), "freigegeben");
+
+    private async Task AssignAsync(string nodeId, UserRef target) =>
+        Report(nodeId, await Assignments.AssignAsync(nodeId, target, _user, _isManager, CancellationToken.None), $"{target.DisplayName} zugewiesen");
+
+    /// <summary>"zu Google Maps": the route's nodes are claimed by the current user; nodes held by colleagues are skipped.</summary>
+    private async Task ClaimRouteAsync()
+    {
+        var skipped = new List<string>();
+        foreach (var id in _route.ToList())
+        {
+            // actorIsManager: false → a route never takes nodes away from colleagues, not even for a Betriebsleiter.
+            var result = await Assignments.ClaimAsync(id, _user, actorIsManager: false, CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                skipped.Add(result.Current is { } other ? $"{id} ({other.Assignee.DisplayName})" : id);
+            }
+        }
+
+        ShowNotice(skipped.Count == 0
+            ? $"{_route.Count} Node(s) dir zugewiesen."
+            : $"Nicht übernommen, da bereits zugewiesen: {string.Join(", ", skipped)}");
+    }
+
+    private void Report(string nodeId, AssignmentResult result, string successText) => ShowNotice(result.Outcome switch
+    {
+        AssignmentOutcome.Ok => $"{nodeId} {successText}.",
+        AssignmentOutcome.Unchanged => null,
+        AssignmentOutcome.AlreadyAssigned => $"{nodeId} wird bereits von {result.Current?.Assignee.DisplayName} bearbeitet.",
+        AssignmentOutcome.NotAllowed => "Dafür fehlt dir die Berechtigung.",
+        _ => $"{nodeId} wurde nicht gefunden.",
+    });
+
+    private void ShowNotice(string? text)
+    {
+        _noticeTimer?.Cancel();
+        _noticeTimer?.Dispose();
+        _notice = text;
+        if (text is null)
+        {
+            return;
+        }
+
+        var cts = _noticeTimer = new CancellationTokenSource();
+        _ = Task.Delay(NoticeDuration, cts.Token).ContinueWith(
+            _ => InvokeAsync(() =>
+            {
+                if (ReferenceEquals(_noticeTimer, cts))
+                {
+                    _notice = null;
+                    StateHasChanged();
+                }
+            }),
+            cts.Token,
+            TaskContinuationOptions.OnlyOnRanToCompletion,
+            TaskScheduler.Default);
+    }
+
+    public void Dispose()
+    {
+        Fleet.Changed -= OnFleetChanged;
+        _noticeTimer?.Cancel();
+        _noticeTimer?.Dispose();
+    }
 }

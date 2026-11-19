@@ -20,13 +20,20 @@ export function init(element, dotnetRef, options) {
   window.addEventListener('resize', positionAnchor);
 }
 
+// F11: initials of the person responsible, bottom right of the pin (blue = assigned to me).
+function badge(n) {
+  if (!n.assignee) return '';
+  const text = String(n.assignee).replace(/[^A-Za-zÀ-ÿ]/g, '').slice(0, 2);
+  return `<div class="tn-badge${n.mine ? ' is-mine' : ''}">${text}</div>`;
+}
+
 function buildIcon(n) {
   const bubble = routeMode
     ? `<div class="tn-bubble${n.selected ? ' is-selected' : ''}">${n.selected ? CHECK_SVG : ''}</div>`
     : '';
   return L.divIcon({
     className: 'tn-marker',
-    html: `${bubble}<div class="tn-pin status-${n.status}${n.active ? ' is-active' : ''}"></div>`,
+    html: `${bubble}<div class="tn-pin status-${n.status}${n.active ? ' is-active' : ''}"></div>${badge(n)}`,
     iconSize: [22, 22],
     iconAnchor: [11, 11],
   });
@@ -40,7 +47,7 @@ export function setNodes(nodes, isRouteMode) {
   for (const n of nodes) {
     if (n.lat == null || n.lon == null) continue;
     seen.add(n.id);
-    const look = `${n.status}|${n.selected}|${routeMode}|${n.active}`;
+    const look = `${n.status}|${n.selected}|${routeMode}|${n.active}|${n.assignee}|${n.mine}`;
     let m = markers.get(n.id);
     if (!m) {
       m = L.marker([n.lat, n.lon], { icon: buildIcon(n), title: n.id, keyboard: true, riseOnHover: true });

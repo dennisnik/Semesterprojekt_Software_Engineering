@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using TNWatch.Domain.Assignments;
 using TNWatch.Domain.Diagnostics;
 using TNWatch.Domain.Fleet;
 using TNWatch.Domain.Status;
@@ -21,6 +22,7 @@ public static class AlertingServiceCollectionExtensions
         services.AddSingleton<IngestionStats>();
         services.AddScoped<ITelemetryHandler, TelemetryProcessor>();
         services.AddScoped<IBatteryLifecycleHandler, BatteryEventProcessor>();
+        services.AddSingleton<IAssignmentService, AssignmentService>();
         services.AddSingleton<OfflineWatchdog>();
         services.AddHostedService(sp => sp.GetRequiredService<OfflineWatchdog>());
         return services;

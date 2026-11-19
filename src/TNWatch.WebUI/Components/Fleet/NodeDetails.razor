@@ -1,10 +1,12 @@
 @* Enlarged node view (Mockup 2 "Details", F05): master data, voltage/current chart, status + battery history, CSV export. *@
+@using TNWatch.Domain.Assignments
 @using TNWatch.Domain.Battery
 @using TNWatch.Domain.Routing
 @inject IFleetQueries Queries
 @inject IJSRuntime JS
 @inject TimeProvider Time
 @inject StatusEvaluator Evaluator
+@inject IUserDirectory UserDirectory
 @implements IAsyncDisposable
 
 <section class="card details-panel" role="dialog" aria-label="Details @Node.Id">
@@ -40,6 +42,41 @@
                 <dt>Ladezustand:</dt>
                 <dd><BatteryBar Percent="Node.StateOfChargePercent" Status="Node.Status" Large="true" /></dd>
             </dl>
+        </div>
+
+        <div class="assignment-box">
+            <div class="assignment-current">
+                <h3>Zuständigkeit</h3>
+                <AssigneeText Assignment="Assignment" CurrentUserName="@CurrentUser.UserName" />
+                @if (Assignment is { } a)
+                {
+                    <span class="muted">
+                        @(a.IsSelfClaimed ? "übernommen" : $"zugewiesen von {a.AssignedBy.DisplayName}") am @Format.DateTime(a.AssignedAt)
+                    </span>
+                }
+            </div>
+            <div class="assignment-actions">
+                @if (AssignmentUi.CanClaim(Assignment, CurrentUser, IsManager))
+                {
+                    <button type="button" class="btn btn-small btn-primary" @onclick="OnClaim">Übernehmen</button>
+                }
+                @if (AssignmentUi.CanRelease(Assignment, CurrentUser, IsManager))
+                {
+                    <button type="button" class="btn btn-small btn-ghost" @onclick="OnRelease">Freigeben</button>
+                }
+                @if (IsManager && _users.Count > 0)
+                {
+                    <label class="visually-hidden" for="assign-user">Zuweisen an</label>
+                    <select id="assign-user" @bind="_selectedUser">
+                        <option value="">Zuweisen an …</option>
+                        @foreach (var u in _users)
+                        {
+                            <option value="@u.UserName">@u.DisplayName (@u.UserName)</option>
+                        }
+                    </select>
+                    <button type="button" class="btn btn-small" disabled="@string.IsNullOrEmpty(_selectedUser)" @onclick="AssignSelectedAsync">Zuweisen</button>
+                }
+            </div>
         </div>
 
         <div class="section-head">
@@ -134,6 +171,38 @@
     [Parameter, EditorRequired] public NodeSnapshot Node { get; set; } = default!;
 
     [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public NodeAssignment? Assignment { get; set; }
+
+    [Parameter, EditorRequired] public UserRef CurrentUser { get; set; } = default!;
+
+    [Parameter] public bool IsManager { get; set; }
+
+    [Parameter] public EventCallback OnClaim { get; set; }
+
+    [Parameter] public EventCallback OnRelease { get; set; }
+
+    [Parameter] public EventCallback<UserRef> OnAssign { get; set; }
+
+    private IReadOnlyList<UserRef> _users = [];
+    private string _selectedUser = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsManager)
+        {
+            _users = await UserDirectory.GetAssignableUsersAsync(CancellationToken.None);
+        }
+    }
+
+    private async Task AssignSelectedAsync()
+    {
+        if (_users.FirstOrDefault(u => u.UserName == _selectedUser) is { } user)
+        {
+            await OnAssign.InvokeAsync(user);
+            _selectedUser = string.Empty;
+        }
+    }
 
     private string CsvUrl =>
         $"api/nodes/{Uri.EscapeDataString(Node.Id)}/export.csv?from={Uri.EscapeDataString(_since.UtcDateTime.ToString("O"))}&to={Uri.EscapeDataString(_until.UtcDateTime.ToString("O"))}";

@@ -9,9 +9,10 @@ public class BatteryEventProcessorTests
     private static readonly DateTimeOffset T0 = new(2026, 11, 5, 10, 30, 0, TimeSpan.Zero);
     private readonly FakeTelemetryRepository _repo = new();
     private readonly RecordingNotifier _notifier = new();
+    private readonly RecordingAssignmentService _assignments = new();
     private readonly BatteryEventProcessor _sut;
 
-    public BatteryEventProcessorTests() => _sut = new BatteryEventProcessor(_repo, _notifier, NullLogger<BatteryEventProcessor>.Instance);
+    public BatteryEventProcessorTests() => _sut = new BatteryEventProcessor(_repo, _notifier, _assignments, NullLogger<BatteryEventProcessor>.Instance);
 
     private static BatteryEvent Exchange(Guid id, string node = "TN0001") =>
         new(id, BatteryEventType.Exchange, T0, node, "BAT0001", "BAT0002", 52.52, 13.405, 8);
@@ -25,6 +26,7 @@ public class BatteryEventProcessorTests
 
         Assert.Equal("BAT0001", _repo.Nodes[0].BatterySerial);
         Assert.Single(_repo.BatteryEvents);
+        Assert.Equal(["TN0001"], _assignments.ReleasedAfterExchange); // F11: job done → node free again
         Assert.Equal("BAT0001", Assert.Single(_notifier.Updates).BatterySerial);
     }
 
@@ -53,5 +55,6 @@ public class BatteryEventProcessorTests
     {
         await _sut.HandleAsync(new BatteryEvent(Guid.NewGuid(), BatteryEventType.Discard, T0, null, null, "BAT0002", null, null, null), CancellationToken.None);
         Assert.Equal(BatteryEventType.Discard, Assert.Single(_repo.BatteryEvents).Type);
+        Assert.Empty(_assignments.ReleasedAfterExchange); // a discard does not end an assignment
     }
 }

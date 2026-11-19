@@ -1,4 +1,5 @@
 @* Node popup next to the clicked pin (Mockup 2). "Details" enlarges it to the details view. *@
+@using TNWatch.Domain.Assignments
 @inject TimeProvider Time
 @implements IAsyncDisposable
 
@@ -18,9 +19,19 @@
         <dd>@(Node.BatterySerial ?? "–")</dd>
         <dt>Letzter Kontakt:</dt>
         <dd title="@Format.DateTime(Node.LastSeenAt)">@Format.Ago(Node.LastSeenAt, Time.GetUtcNow())</dd>
+        <dt>Zuständig:</dt>
+        <dd><AssigneeText Assignment="Assignment" CurrentUserName="@CurrentUser.UserName" /></dd>
     </dl>
     <BatteryBar Percent="Node.StateOfChargePercent" Status="Node.Status" Large="true" />
     <div class="card-actions">
+        @if (AssignmentUi.CanClaim(Assignment, CurrentUser, IsManager))
+        {
+            <button type="button" class="btn btn-small btn-primary" @onclick="OnClaim">Übernehmen</button>
+        }
+        @if (AssignmentUi.CanRelease(Assignment, CurrentUser, IsManager))
+        {
+            <button type="button" class="btn btn-small btn-ghost" @onclick="OnRelease">Freigeben</button>
+        }
         <button type="button" class="btn btn-small" @onclick="OnDetails">Details</button>
     </div>
 </section>
@@ -32,6 +43,16 @@
     [Parameter, EditorRequired] public NodeSnapshot Node { get; set; } = default!;
 
     [Parameter, EditorRequired] public FleetMap Map { get; set; } = default!;
+
+    [Parameter] public NodeAssignment? Assignment { get; set; }
+
+    [Parameter, EditorRequired] public UserRef CurrentUser { get; set; } = default!;
+
+    [Parameter] public bool IsManager { get; set; }
+
+    [Parameter] public EventCallback OnClaim { get; set; }
+
+    [Parameter] public EventCallback OnRelease { get; set; }
 
     [Parameter] public EventCallback OnDetails { get; set; }
 

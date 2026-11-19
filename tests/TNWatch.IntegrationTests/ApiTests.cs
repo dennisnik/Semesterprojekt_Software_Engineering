@@ -87,6 +87,42 @@ public sealed class ApiTests(PostgresFixture db) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Assignment_flow_via_api()
+    {
+        var client = _factory.CreateClient();
+        await client.PostAsync("/api/simulator/on", null);
+        for (var i = 0; i < 50 && !(await client.GetAsync("/api/nodes/SIM-002")).IsSuccessStatusCode; i++)
+        {
+            await Task.Delay(100);
+        }
+
+        // Development login = markus (Betriebsleiter)
+        var claim = await client.PostAsJsonAsync("/api/nodes/SIM-002/assignment", new { });
+        Assert.Equal(HttpStatusCode.OK, claim.StatusCode);
+        var claimed = await claim.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("markus", claimed.GetProperty("assignee").GetProperty("userName").GetString());
+
+        var users = await client.GetFromJsonAsync<JsonElement>("/api/users/assignable");
+        Assert.Contains(users.EnumerateArray(), u => u.GetProperty("userName").GetString() == "kevin");
+
+        var assign = await client.PostAsJsonAsync("/api/nodes/SIM-002/assignment", new { userName = "kevin" });
+        Assert.Equal(HttpStatusCode.OK, assign.StatusCode);
+        var all = await client.GetFromJsonAsync<JsonElement>("/api/assignments");
+        var only = Assert.Single(all.EnumerateArray());
+        Assert.Equal("kevin", only.GetProperty("assignee").GetProperty("userName").GetString());
+        Assert.Equal("markus", only.GetProperty("assignedBy").GetProperty("userName").GetString());
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/nodes/SIM-002/assignment", new { userName = "nobody" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync("/api/nodes/NOPE-1/assignment", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.DeleteAsync("/api/nodes/bad%20id/assignment")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await client.DeleteAsync("/api/nodes/SIM-002/assignment")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync("/api/nodes/SIM-002/assignment")).StatusCode);
+        Assert.Equal(0, (await client.GetFromJsonAsync<JsonElement>("/api/assignments")).GetArrayLength());
+        await client.PostAsync("/api/simulator/off", null);
+    }
+
+    [Fact]
     public async Task Unknown_node_returns_404()
         => Assert.Equal(HttpStatusCode.NotFound, (await _factory.CreateClient().GetAsync("/api/nodes/NOPE-1")).StatusCode);
 }

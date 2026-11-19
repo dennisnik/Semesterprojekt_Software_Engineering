@@ -62,7 +62,11 @@ public class OfflineWatchdogTests
         AddNodeSeenAt("OLD", _time.GetUtcNow().AddHours(-1));
 
         await _sut.StartAsync(CancellationToken.None);
-        await Task.Delay(100);
+        for (var i = 0; i < 250 && _repo.Nodes[0].Status != NodeStatus.Offline; i++)
+        {
+            await Task.Delay(20); // poll instead of a fixed sleep: CI runners can be slow
+        }
+
         await _sut.StopAsync(CancellationToken.None);
 
         Assert.Equal(NodeStatus.Offline, _repo.Nodes[0].Status);

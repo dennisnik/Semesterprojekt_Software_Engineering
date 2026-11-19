@@ -79,6 +79,7 @@ app.MapStaticAssets().AllowAnonymous();
 app.MapHealthChecks("/health").AllowAnonymous();
 app.MapAccountEndpoints();
 app.MapFleetApi();
+app.MapAssignmentApi();
 app.MapHub<TelemetryHub>(TelemetryHub.Path);
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 

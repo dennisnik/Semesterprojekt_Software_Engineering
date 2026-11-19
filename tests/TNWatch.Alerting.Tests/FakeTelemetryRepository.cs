@@ -1,3 +1,4 @@
+using TNWatch.Domain.Assignments;
 using TNWatch.Domain.Battery;
 using TNWatch.Domain.Fleet;
 using TNWatch.Domain.Status;
@@ -68,7 +69,11 @@ internal sealed class RecordingNotifier : IFleetNotifier
 
     public event Func<Task>? FleetReset;
 
+    public event Func<AssignmentChange, Task>? AssignmentChanged;
+
     public List<NodeSnapshot> Updates { get; } = [];
+
+    public List<AssignmentChange> AssignmentChanges { get; } = [];
 
     public List<StatusChange> Changes { get; } = [];
 
@@ -86,9 +91,82 @@ internal sealed class RecordingNotifier : IFleetNotifier
         return StatusChanged?.Invoke(change) ?? Task.CompletedTask;
     }
 
+    public Task PublishAssignmentChangedAsync(AssignmentChange change)
+    {
+        AssignmentChanges.Add(change);
+        return AssignmentChanged?.Invoke(change) ?? Task.CompletedTask;
+    }
+
     public Task PublishFleetResetAsync()
     {
         Resets++;
         return FleetReset?.Invoke() ?? Task.CompletedTask;
+    }
+}
+
+/// <summary>In-memory assignment store.</summary>
+internal sealed class FakeAssignmentStore : IAssignmentStore
+{
+    public Dictionary<string, NodeAssignment> Items { get; } = new(StringComparer.Ordinal);
+
+    public Task<IReadOnlyList<NodeAssignment>> GetAllAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<NodeAssignment>>(Items.Values.ToList());
+
+    public Task<NodeAssignment?> GetAsync(string nodeId, CancellationToken ct) => Task.FromResult(Items.GetValueOrDefault(nodeId));
+
+    public Task SaveAsync(NodeAssignment assignment, CancellationToken ct)
+    {
+        Items[assignment.NodeId] = assignment;
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(string nodeId, CancellationToken ct)
+    {
+        Items.Remove(nodeId);
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Read side that knows a fixed set of node IDs.</summary>
+internal sealed class FakeFleetQueries(params string[] nodeIds) : IFleetQueries
+{
+    private static NodeSnapshot Snap(string id) => new(id, null, false, TNWatch.Domain.Status.NodeStatus.Normal, 12.6, 12.6, 0.5, 88, null, null, null, null);
+
+    public Task<IReadOnlyList<NodeSnapshot>> GetNodesAsync(bool includeSimulated, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<NodeSnapshot>>(nodeIds.Select(Snap).ToList());
+
+    public Task<NodeSnapshot?> GetNodeAsync(string nodeId, CancellationToken ct) =>
+        Task.FromResult(nodeIds.Contains(nodeId) ? Snap(nodeId) : null);
+
+    public Task<IReadOnlyList<MeasurementPoint>> GetMeasurementsAsync(string nodeId, DateTimeOffset since, DateTimeOffset until, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MeasurementPoint>>([]);
+
+    public Task<IReadOnlyList<StatusChange>> GetStatusChangesAsync(string nodeId, int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<StatusChange>>([]);
+
+    public Task<IReadOnlyList<BatteryEvent>> GetBatteryEventsAsync(string nodeId, int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<BatteryEvent>>([]);
+
+    public Task<FleetSummary> GetSummaryAsync(bool includeSimulated, CancellationToken ct) =>
+        Task.FromResult(new FleetSummary(nodeIds.Length, nodeIds.Length, 0, 0, 0, 0));
+}
+
+/// <summary>Records automatic releases triggered by battery exchanges.</summary>
+internal sealed class RecordingAssignmentService : IAssignmentService
+{
+    public List<string> ReleasedAfterExchange { get; } = [];
+
+    public Task<IReadOnlyList<NodeAssignment>> GetAllAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<NodeAssignment>>([]);
+
+    public Task<AssignmentResult> ClaimAsync(string nodeId, UserRef actor, bool actorIsManager, CancellationToken ct) => throw new NotSupportedException();
+
+    public Task<AssignmentResult> AssignAsync(string nodeId, UserRef target, UserRef actor, bool actorIsManager, CancellationToken ct) => throw new NotSupportedException();
+
+    public Task<AssignmentResult> ReleaseAsync(string nodeId, UserRef actor, bool actorIsManager, CancellationToken ct) => throw new NotSupportedException();
+
+    public Task ReleaseAfterBatteryExchangeAsync(string nodeId, CancellationToken ct)
+    {
+        ReleasedAfterExchange.Add(nodeId);
+        return Task.CompletedTask;
     }
 }

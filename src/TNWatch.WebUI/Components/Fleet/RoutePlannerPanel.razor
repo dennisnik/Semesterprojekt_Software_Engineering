@@ -21,7 +21,13 @@
             {
                 <li @key="n.Id">
                     <span class="node-id">@n.Id</span>
-                    <StatusText Status="n.Status" />
+                    <span class="route-status">
+                        <StatusText Status="n.Status" />
+                        @if (AssignmentOf(n.Id) is { } a && !a.Assignee.UserName.Equals(CurrentUserName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <small class="taken" title="Wird bereits bearbeitet">@a.Assignee.DisplayName</small>
+                        }
+                    </span>
                     <BatteryBar Percent="n.StateOfChargePercent" Status="n.Status" />
                     <button type="button" class="icon-btn small" aria-label="@n.Id entfernen" @onclick="() => OnRemove.InvokeAsync(n.Id)"><Icon Name="close" /></button>
                 </li>
@@ -42,13 +48,17 @@
     <footer class="card-footer">
         @if (RouteUrl is { } url)
         {
-            <a class="btn btn-outline" href="@url" target="_blank" rel="noopener">zu Google Maps</a>
+            <a class="btn btn-outline" href="@url" target="_blank" rel="noopener" @onclick="OnStartRoute">zu Google Maps</a>
         }
         else
         {
             <button type="button" class="btn btn-outline" disabled>zu Google Maps</button>
         }
     </footer>
+    @if (Nodes.Count > 0)
+    {
+        <p class="hint small">Beim Start werden dir die Nodes zugewiesen.</p>
+    }
 </section>
 
 @code {
@@ -61,6 +71,13 @@
     [Parameter] public EventCallback OnClear { get; set; }
 
     [Parameter] public EventCallback OnSelectCritical { get; set; }
+
+    /// <summary>"zu Google Maps" clicked: claim the selected nodes (F11).</summary>
+    [Parameter] public EventCallback OnStartRoute { get; set; }
+
+    [Parameter] public Func<string?, TNWatch.Domain.Assignments.NodeAssignment?> AssignmentOf { get; set; } = _ => null;
+
+    [Parameter] public string CurrentUserName { get; set; } = string.Empty;
 
     private bool TooMany => Nodes.Count > GoogleMapsRouteBuilder.MaxStops;
 

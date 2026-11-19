@@ -17,6 +17,8 @@ public sealed class TnWatchDbContext(DbContextOptions<TnWatchDbContext> options)
 
     public DbSet<BatteryEventEntity> BatteryEvents => Set<BatteryEventEntity>();
 
+    public DbSet<AssignmentEntity> Assignments => Set<AssignmentEntity>();
+
     /// <summary>ASP.NET Core Data Protection keys (auth cookies survive container restarts).</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
@@ -65,6 +67,19 @@ public sealed class TnWatchDbContext(DbContextOptions<TnWatchDbContext> options)
         });
 
         modelBuilder.Entity<DataProtectionKey>(e => e.ToTable("data_protection_keys", "core"));
+
+        modelBuilder.Entity<AssignmentEntity>(e =>
+        {
+            e.ToTable("node_assignments", "core");
+            e.HasKey(a => a.NodeId);
+            e.Property(a => a.NodeId).HasMaxLength(64);
+            e.Property(a => a.AssigneeUserName).HasMaxLength(128);
+            e.Property(a => a.AssigneeDisplayName).HasMaxLength(256);
+            e.Property(a => a.AssignedByUserName).HasMaxLength(128);
+            e.Property(a => a.AssignedByDisplayName).HasMaxLength(256);
+            e.HasIndex(a => a.AssigneeUserName);
+            e.HasOne<TrafficNode>().WithOne().HasForeignKey<AssignmentEntity>(a => a.NodeId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         modelBuilder.Entity<BatteryEventEntity>(e =>
         {

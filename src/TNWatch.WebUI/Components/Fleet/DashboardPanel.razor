@@ -24,11 +24,17 @@
             @KpiTile("Offline", Summary.Offline, NodeStatus.Offline)
         </div>
 
-        <label class="search">
-            <span class="visually-hidden">Suche</span>
-            <input type="search" placeholder="Suche…" @bind="_query" @bind:event="oninput" />
-            <Icon Name="search" />
-        </label>
+        <div class="filter-row">
+            <label class="search">
+                <span class="visually-hidden">Suche</span>
+                <input type="search" placeholder="Suche…" @bind="_query" @bind:event="oninput" />
+                <Icon Name="search" />
+            </label>
+            <label class="check">
+                <input type="checkbox" @bind="_onlyMine" />
+                Nur meine
+            </label>
+        </div>
 
         <div class="table-wrap">
             <table class="fleet-table">
@@ -39,6 +45,7 @@
                         <th scope="col" class="num">Spannung</th>
                         <th scope="col" class="num">Entladestrom</th>
                         <th scope="col">Ladezustand</th>
+                        <th scope="col">Zuständig</th>
                         <th scope="col"><span class="visually-hidden">Aktionen</span></th>
                     </tr>
                 </thead>
@@ -51,6 +58,7 @@
                             <td data-label="Spannung" class="num">@Format.Volt(n.VoltageV)</td>
                             <td data-label="Entladestrom" class="num">@Format.Ampere(n.CurrentA)</td>
                             <td data-label="Ladezustand"><BatteryBar Percent="n.StateOfChargePercent" Status="n.Status" LabelBelow="true" /></td>
+                            <td data-label="Zuständig"><AssigneeText Assignment="AssignmentOf(n.Id)" CurrentUserName="@CurrentUserName" /></td>
                             <td class="actions-cell">
                                 <div class="row-actions">
                                     <button type="button" class="btn btn-small" @onclick="() => OnDetails.InvokeAsync(n.Id)">Details</button>
@@ -73,6 +81,7 @@
     private string _query = string.Empty;
     private NodeStatus? _statusFilter;
     private bool _toggling;
+    private bool _onlyMine;
 
     [Parameter, EditorRequired] public IReadOnlyList<NodeSnapshot> Nodes { get; set; } = [];
 
@@ -84,6 +93,10 @@
 
     [Parameter] public EventCallback<bool> OnSetSimulator { get; set; }
 
+    [Parameter] public Func<string?, TNWatch.Domain.Assignments.NodeAssignment?> AssignmentOf { get; set; } = _ => null;
+
+    [Parameter] public string CurrentUserName { get; set; } = string.Empty;
+
     [Parameter] public EventCallback<string> OnDetails { get; set; }
 
     [Parameter] public EventCallback<string> OnShowOnMap { get; set; }
@@ -92,9 +105,11 @@
 
     private IEnumerable<NodeSnapshot> Filtered => Nodes.Where(n =>
         (_statusFilter is null || n.Status == _statusFilter) &&
+        (!_onlyMine || AssignmentOf(n.Id)?.Assignee.UserName.Equals(CurrentUserName, StringComparison.OrdinalIgnoreCase) == true) &&
         (string.IsNullOrWhiteSpace(_query) ||
          n.Id.Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase) ||
-         Format.Label(n.Status).Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase)));
+         Format.Label(n.Status).Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase) ||
+         (AssignmentOf(n.Id)?.Assignee.DisplayName.Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)));
 
     private RenderFragment KpiTile(string label, int value, NodeStatus? status) =>
         @<button type="button" class="kpi @(status is { } s ? Format.Css(s) : "status-all") @(_statusFilter == status ? "is-active" : "")"

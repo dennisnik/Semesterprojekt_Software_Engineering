@@ -1,3 +1,4 @@
+using TNWatch.Domain.Assignments;
 using TNWatch.Domain.Fleet;
 using TNWatch.Domain.Status;
 
@@ -15,8 +16,10 @@ public sealed class FleetViewModel : IAsyncDisposable
     private readonly IFleetQueries _queries;
     private readonly IFleetNotifier _notifier;
     private readonly ISimulatorControl _simulator;
+    private readonly IAssignmentService _assignmentService;
     private readonly ILogger<FleetViewModel> _logger;
     private readonly Dictionary<string, NodeSnapshot> _nodes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NodeAssignment> _assignments = new(StringComparer.Ordinal);
     private readonly object _sync = new();
     private PeriodicTimer? _timer;
     private Task? _loop;
@@ -24,11 +27,17 @@ public sealed class FleetViewModel : IAsyncDisposable
     private bool _initialized;
     private IReadOnlyList<NodeSnapshot> _sorted = [];
 
-    public FleetViewModel(IFleetQueries queries, IFleetNotifier notifier, ISimulatorControl simulator, ILogger<FleetViewModel> logger)
+    public FleetViewModel(
+        IFleetQueries queries,
+        IFleetNotifier notifier,
+        ISimulatorControl simulator,
+        IAssignmentService assignmentService,
+        ILogger<FleetViewModel> logger)
     {
         _queries = queries;
         _notifier = notifier;
         _simulator = simulator;
+        _assignmentService = assignmentService;
         _logger = logger;
     }
 
@@ -58,6 +67,20 @@ public sealed class FleetViewModel : IAsyncDisposable
         }
     }
 
+    /// <summary>Who is responsible for the node (F11), or <c>null</c>.</summary>
+    public NodeAssignment? AssignmentOf(string? nodeId)
+    {
+        if (nodeId is null)
+        {
+            return null;
+        }
+
+        lock (_sync)
+        {
+            return _assignments.GetValueOrDefault(nodeId);
+        }
+    }
+
     public async Task InitializeAsync()
     {
         if (_initialized)
@@ -69,6 +92,7 @@ public sealed class FleetViewModel : IAsyncDisposable
         await ReloadAsync();
         _notifier.NodeUpdated += OnNodeUpdated;
         _notifier.FleetReset += OnFleetReset;
+        _notifier.AssignmentChanged += OnAssignmentChanged;
         _timer = new PeriodicTimer(RenderThrottle);
         _loop = RunAsync(_timer);
     }
@@ -88,6 +112,7 @@ public sealed class FleetViewModel : IAsyncDisposable
     {
         _notifier.NodeUpdated -= OnNodeUpdated;
         _notifier.FleetReset -= OnFleetReset;
+        _notifier.AssignmentChanged -= OnAssignmentChanged;
         _timer?.Dispose();
         if (_loop is not null)
         {
@@ -98,12 +123,19 @@ public sealed class FleetViewModel : IAsyncDisposable
     private async Task ReloadAsync()
     {
         var nodes = await _queries.GetNodesAsync(_simulator.IsRunning, CancellationToken.None);
+        var assignments = await _assignmentService.GetAllAsync(CancellationToken.None);
         lock (_sync)
         {
             _nodes.Clear();
             foreach (var n in nodes)
             {
                 _nodes[n.Id] = n;
+            }
+
+            _assignments.Clear();
+            foreach (var a in assignments)
+            {
+                _assignments[a.NodeId] = a;
             }
 
             Rebuild();
@@ -120,6 +152,25 @@ public sealed class FleetViewModel : IAsyncDisposable
         lock (_sync)
         {
             _nodes[snapshot.Id] = snapshot;
+            _dirty = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task OnAssignmentChanged(AssignmentChange change)
+    {
+        lock (_sync)
+        {
+            if (change.Assignment is null)
+            {
+                _assignments.Remove(change.NodeId);
+            }
+            else
+            {
+                _assignments[change.NodeId] = change.Assignment;
+            }
+
             _dirty = true;
         }
 

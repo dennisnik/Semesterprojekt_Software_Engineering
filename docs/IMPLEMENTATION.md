@@ -118,6 +118,7 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │   ├── docker-compose.yml        3 containers: app, db (PostgreSQL 16), keycloak
 │   ├── .env.example              Template for secrets/ports → copy to deploy/.env (ignored)
 │   ├── keycloak/tnwatch-realm.json  Keycloak realm: client, roles, demo users (imported at start)
+│   ├── keycloak/enable-user-directory.sh  One-off upgrade of an existing realm for F11 (service account rights)
 │   └── postgres/init/01-keycloak-database.sql  Creates the separate "keycloak" database
 │
 ├── docs/
@@ -152,6 +153,10 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │   │   │   ├── IFleetNotifier.cs         Live-update events (NodeUpdated, StatusChanged, FleetReset)
 │   │   │   ├── FleetNotifier.cs          Implementation; a failing subscriber can't break others
 │   │   │   └── MeasurementDownsampler.cs Thins out long series for the chart (raw data stays for CSV)
+│   │   ├── Assignments/                  F11 "who handles which node"
+│   │   │   ├── NodeAssignment.cs         UserRef, NodeAssignment, AssignmentChange (live event)
+│   │   │   ├── AssignmentRules.cs        Who may claim / assign / release (pure, unit-tested)
+│   │   │   └── Interfaces.cs             IAssignmentStore, IAssignmentService, IUserDirectory
 │   │   ├── Routing/GoogleMapsRouteBuilder.cs  Builds the Google Maps route/location links (F07)
 │   │   ├── Export/MeasurementCsv.cs      CSV export format (F08)
 │   │   └── Diagnostics/IngestionStats.cs Latency percentiles + counters (NFA01 evidence)
@@ -181,6 +186,7 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │   │   ├── Entities/*.cs                 Table rows for measurements, status changes, battery events
 │   │   ├── TelemetryRepository.cs        Write side (ITelemetryRepository)
 │   │   ├── FleetQueries.cs               Read side (IFleetQueries), one short-lived context per query
+│   │   ├── AssignmentStore.cs            core.node_assignments (F11)
 │   │   ├── PersistenceServiceCollectionExtensions.cs  DI registration + "migrate on startup"
 │   │   ├── DesignTimeDbContextFactory.cs Only for `dotnet ef migrations add`
 │   │   └── Migrations/                   Generated DB schema history (do not edit by hand)
@@ -189,6 +195,7 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │   │   ├── TelemetryProcessor.cs         Store + evaluate + log status change + notify (F02, F06)
 │   │   ├── BatteryEventProcessor.cs      Store battery event once + update node battery (F10)
 │   │   ├── OfflineWatchdog.cs            Periodic offline check (+ AlertingOptions)
+│   │   ├── AssignmentService.cs          F11 use cases, serialized with a lock, pushes live updates
 │   │   └── AlertingServiceCollectionExtensions.cs  DI registration
 │   │
 │   └── TNWatch.WebUI/                    ── the host process and everything the user sees
@@ -199,12 +206,16 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │       │   ├── AuthSetup.cs              OIDC + cookie login, role policy, /account/login|logout
 │       │   ├── AuthOptions.cs            Config section "Auth"
 │       │   ├── DevelopmentAuthHandler.cs Fake login for local development only
+│       │   ├── CurrentUser.cs            Logged-in user → UserRef / "is Betriebsleiter?"
+│       │   ├── UserDirectories.cs        Assignable users: Keycloak Admin API (prod) / config (dev)
 │       │   └── Roles.cs                  "Betriebsleiter", "Techniker"
 │       ├── Api/FleetApi.cs               REST endpoints /api/… with input validation (NFA08)
+│       ├── Api/AssignmentApi.cs          REST endpoints for F11 (claim / assign / release)
 │       ├── Realtime/TelemetryHub.cs      SignalR hub + broadcaster for external clients
 │       ├── State/FleetViewModel.cs       Per-browser live fleet state (throttled re-render)
 │       ├── Ui/Format.cs                  German number/date format, status labels and CSS classes
 │       ├── Ui/MapOptions.cs              Config: map tiles, start position
+│       ├── Ui/AssignmentUi.cs            Which assignment buttons to show (mirrors the rules)
 │       ├── Components/
 │       │   ├── App.razor                 HTML shell: loads Leaflet, Chart.js, Blazor
 │       │   ├── Routes.razor              Routing + "must be logged in"
@@ -221,7 +232,7 @@ Generated folders (`bin/`, `obj/`, `TestResults/`, `coverage/`) and the vendored
 │           ├── lib/                      Vendored Leaflet 1.9.4 + Chart.js 4.4.1 (no CDN dependency)
 │           └── favicon.svg
 │
-└── tests/                                ── 128 automated tests
+└── tests/                                ── 152 automated tests
     ├── TNWatch.Domain.Tests/             Status rules, SoC curve, node transitions, CSV, route links
     ├── TNWatch.TelemetryIngestion.Tests/ Parsers with real sample payloads, pipeline, simulator, TLS rule
     ├── TNWatch.Alerting.Tests/           Processors + watchdog against an in-memory fake repository
@@ -278,6 +289,7 @@ One PostgreSQL database with three schemas ([ADR-09](adr/ADR.md#adr-09-datenbank
 | `core.traffic_nodes` | One row per node: master data + current snapshot (status, last values, battery) | Maps directly to the `TrafficNode` domain class |
 | `core.battery_events` | Exchange/discard events | `event_id` is the primary key → duplicates are impossible |
 | `core.data_protection_keys` | ASP.NET Core keys for login cookies | So logins survive container restarts |
+| `core.node_assignments` | Who is responsible for which node (F11) | `node_id` is the primary key → one assignee per node; deleted with the node |
 | `telemetry.measurements` | Every measurement (time series) | Index `(node_id, measured_at DESC)` for "newest values of node X" |
 | `alerting.status_changes` | Status history (F06) | |
 
@@ -359,12 +371,16 @@ On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which th
 ## 7. Several users at the same time
 
 - **Every browser tab is independent.** Blazor Server keeps one "circuit" (WebSocket + state) per tab, with its own `FleetViewModel`.
-- **Data is shared and live.** All tabs subscribe to the same in-process `FleetNotifier`. When a message arrives, every open tab sees the new status within ~0.35 s (the render throttle). The KPI counters, table and pins are always the same for everyone.
-- **Interaction state is private.** Selected node, open popup, dashboard filter and the route selection exist only in that tab. If Kevin selects three nodes for his route, Anja doesn't see it.
-- **Consequence:** the app cannot currently show "someone is already handling this node". That would need a shared assignment (stored in the DB and pushed via the notifier, e.g. an "Übernehmen" button), which is a candidate for a new requirement F11.
+- **Data is shared and live.** All tabs subscribe to the same in-process `FleetNotifier`. When a message arrives, every open tab sees the new status within ~0.35 s (render throttle). KPI counters, table and pins are always the same for everyone.
+- **Interaction state is private.** Selected node, open popup, dashboard filter and the route selection exist only in that tab.
+- **Who handles which node is shared (F11).** Assignments are stored in `core.node_assignments` and pushed live to every tab (`AssignmentChanged` event):
+  - *Self-claim:* anyone clicks "Übernehmen" in the popup or details. "zu Google Maps" in the route planner claims all selected nodes; nodes already held by colleagues are skipped and reported.
+  - *Assignment:* the Betriebsleiter picks a person in the details view. The list comes from Keycloak (Admin API via the app's service account, [ADR-06 addendum](adr/ADR.md#adr-06-authentifizierung--autorisierung-openid-connect--oidc)).
+  - *Release:* by the assignee or a Betriebsleiter, and automatically when a battery exchange event for the node arrives (job done).
+  - *Visible as:* initials badge on the pin (blue = mine), "Zuständig" in popup, details and table, filter "Nur meine".
+  - *Rules* ([`AssignmentRules.cs`](../src/TNWatch.Domain/Assignments/AssignmentRules.cs)): a Techniker cannot take a node away from a colleague (API answers 409); only a Betriebsleiter can reassign. The UI only shows buttons the rules allow.
+  - *Simultaneous clicks:* [`AssignmentService`](../src/TNWatch.Alerting/AssignmentService.cs) processes commands one at a time, so exactly one of two simultaneous claims wins (tested with 20 parallel claims). This relies on TN-Watch running as one process; several instances would need a database-level lock instead.
 - **The simulator switch is global** (one simulator per server): if Markus switches it on, everyone sees simulated nodes.
-
----
 
 ## 8. Configuration, secrets and security
 
@@ -401,14 +417,14 @@ On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which th
 
 | Project | Tests | What is covered | Technique |
 |---|---|---|---|
-| `TNWatch.Domain.Tests` | 47 | Thresholds at exactly 12.4/11.8 V and 30 min, smoothing, SoC curve, node transitions, CSV, route links | Pure unit tests |
+| `TNWatch.Domain.Tests` | 59 | Thresholds at exactly 12.4/11.8 V and 30 min, smoothing, SoC curve, node transitions, CSV, route links | Pure unit tests |
 | `TNWatch.TelemetryIngestion.Tests` | 57 | Parsers with the real sample payloads, topic patterns, pipeline routing, simulator output incl. battery events, certificate rule | Unit tests, `FakeTimeProvider` |
-| `TNWatch.Alerting.Tests` | 13 | Processors and watchdog | In-memory [`FakeTelemetryRepository`](../tests/TNWatch.Alerting.Tests/FakeTelemetryRepository.cs) that behaves like a transaction |
-| `TNWatch.IntegrationTests` | 11 | Real schema/migrations, UTC handling, idempotency, the whole app via HTTP (simulator → DB → API) | Testcontainers starts a real PostgreSQL in Docker; `WebApplicationFactory` hosts the app in-process |
+| `TNWatch.Alerting.Tests` | 23 | Processors, watchdog, assignment service incl. 20 concurrent claims | In-memory [`FakeTelemetryRepository`](../tests/TNWatch.Alerting.Tests/FakeTelemetryRepository.cs) that behaves like a transaction |
+| `TNWatch.IntegrationTests` | 13 | Real schema/migrations, UTC handling, idempotency, the whole app via HTTP (simulator → DB → API) | Testcontainers starts a real PostgreSQL in Docker; `WebApplicationFactory` hosts the app in-process |
 
 **Time in tests:** all time-dependent code takes a `TimeProvider` instead of calling `DateTime.Now`. Tests use `FakeTimeProvider` and simply "advance" time, e.g. 31 minutes to test the offline rule, without waiting.
 
-**Coverage:** 97.3 % of lines in Domain, Ingestion, Alerting and Persistence (NFA07 requires 80 %). UI components are verified manually / with browser screenshots, not counted.
+**Coverage:** 97.4 % of lines in Domain, Ingestion, Alerting and Persistence (NFA07 requires 80 %). UI components are verified manually / with browser screenshots, not counted.
 
 **Code quality (NFA06):** all .NET analyzers are on and every warning fails the build ([`Directory.Build.props`](../Directory.Build.props)); `dotnet format --verify-no-changes` enforces the style from [`.editorconfig`](../.editorconfig). Relaxed rules are listed there with a reason.
 
@@ -450,13 +466,14 @@ On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which th
 | F08 CSV export | `MeasurementCsv`, `/api/nodes/{id}/export.csv` | `HelperTests`, `ApiTests` |
 | F09 Notification | not implemented (Could-Have, post-MVP) | – |
 | F10 Battery history | `BatteryEventParser`, `BatteryEventProcessor`, `NodeDetails` | `BatteryEventParserTests`, `BatteryEventProcessorTests`, `PersistenceTests` |
+| F11 Node assignment | `AssignmentRules`, `AssignmentService`, `AssignmentStore`, `AssignmentApi`, popup/details/table/map badge | `AssignmentRulesTests`, `AssignmentServiceTests`, `PersistenceTests`, `ApiTests`; two-user browser test |
 | NFA01 Latency < 300 ms @ 20 msg/s | single-consumer pipeline, indexes | load test: p95 = 217 ms |
 | NFA02 UI < 1.5 s / filter < 200 ms | read queries, in-memory filtering | 100 nodes: page 75 ms, API 11 ms |
 | NFA03 Reconnect ≤ 10 s | reconnect loop (3 s check, 10 s timeout) | by design; not yet tested automatically (needs a broker that can be stopped) |
 | NFA04 ACID | one `SaveChanges` per message | `PersistenceTests` |
 | NFA05 Status colours | CSS variables, pulsing critical pins | screenshots |
 | NFA06 Maintainability | module split, analyzers, `dotnet format` | CI |
-| NFA07 Coverage ≥ 80 % | – | CI coverage gate (97.3 %) |
+| NFA07 Coverage ≥ 80 % | – | CI coverage gate (97.4 %) |
 | NFA08 Validation, no default passwords | `FleetApi` checks, `.env` + `${VAR:?}` | `ApiTests` |
 
 ---
@@ -483,7 +500,6 @@ On top: ±0.03 V noise and a 5 % chance per message of a −0.45 V dip, which th
 
 - **Only one live node so far, without GPS.** Since 19.11.2026 `TN0001` sends on `traffic-nodes/TN0001/measurements`, but with `lat`/`lon` = `null`, so it is not shown on the map. The topic of battery events is still unknown ([mqtt-contract.md §4](interfaces/mqtt-contract.md#4-beobachtungen-am-kurs-broker-discovery-12112026)).
 - **MQTT is off in the local Docker setup** (`MQTT_ENABLED=false` in `deploy/.env`); set the course credentials there to receive live data.
-- **No "who is handling which node"** (section 7).
 - **HTTP only.** For the course server a TLS reverse proxy is required.
 - **No data retention job yet.** README §4 plans 90 days of raw data; old measurements are currently kept forever.
 - **The simulator uses synthetic curves**, not a replay of the real CSV.
